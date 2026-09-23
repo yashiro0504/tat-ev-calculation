@@ -133,6 +133,51 @@ python scripts\fetch_unit_costs.py --sleep 0.3 --out $env:TEMP\costs_p1.json --u
 # ... p6 까지 나눠 실행한 뒤, 각 조각의 units 를 모아 save() 로 병합(형식 유지)
 ```
 
+### ✅ 벤치는 상점 템플릿으로 못 읽는다 (측정, 2026-09-23)
+벤치 9칸을 상점 크롭 템플릿 22개로 분류한 결과: 최고 유사도 **0.39~0.64**, 1·2등 마진 0.002~0.05
+→ 전부 `확인 필요`(**오인 0**). 벤치 유닛은 3D 모델, 상점은 2D 카드 아트라 같은 챔피언이어도
+지문이 겹치지 않는다. **벤치는 벤치 전용 크롭 + 사람 라벨링이 필요하다.**
+
+라벨링을 싸게 하는 방법:
+1. `python %TEMP%\cycle.py` 같은 스크립트로 `data\crops\bench_N.bmp` 를 저장하고,
+2. 벤치 9칸을 3x3 으로 이어 붙인 **작은 합성 이미지**를 만들어 눈으로 보고(또는 사용자에게 확인),
+3. 파일명을 챔피언 이름으로 바꾼 뒤 `build_templates.py --from-crops` 로 합친다.
+
+### 💡 팁: 이름표만 모은 작은 이미지로 챔피언 이름을 읽는다
+상점 카드 5장을 통째로 읽으면 이미지가 커서(수백 KB) 한도에 걸릴 수 있다. 카드 하단 **이름표
+30px만** 잘라 5장을 세로로 이어 붙이면 **약 13KB** 라 항상 읽힌다(코드: `cycle.py` 의 `namebars.png`).
+챔피언 이름·코스트를 확인하는 데는 이걸로 충분하다.
+
+### 💡 더 좋은 방법: Windows 내장 OCR 로 이름표를 텍스트로 읽는다
+이미지 읽기 한도와 무관하게 라벨을 얻을 수 있다(실측 2026-09-23: 한국어 엔진 `ko` 동작).
+
+```powershell
+# 1) 상점 크롭 저장 + 이름표 3배 확대 합성 (작은 글씨는 오독하므로 반드시 확대)
+python %TEMP%\cycle.py        # data\crops\shop_N.bmp + TEMP\shots\namebars.png
+python %TEMP%\mkcrops.py      # 저장된 크롭에서 namebars3x.png 생성(669x510, 18KB)
+# 2) OCR (PowerShell + WinRT Windows.Media.Ocr) -> 슬롯 번호와 이름을 텍스트로 출력
+powershell -NoProfile -ExecutionPolicy Bypass -File %TEMP%\ocr_names.ps1
+```
+실측 출력(코스트 숫자도 함께 읽혀 **교차 검증**이 된다):
+```
+  shop_1  y~9     라칸          (라칸 = Rakan 1코)
+  shop_2  y~111   엘리스        +2      (Elise 2코)
+  shop_4  y~315   세주아니      +2      (Sejuani 2코)
+  shop_5  y~417   릴리아        +4      (Lillia 4코)
+```
+* 한국어 이름 -> 영어 이름 매핑은 사람이 한다(코스트 표의 이름과 **정확히** 같아야 코스트가 붙는다).
+* OCR 은 가끔 오독한다(`일리스`=엘리스, `라간`=라칸). **코스트 숫자가 맞는지로 교차 확인**하고,
+  애매하면 그 칸은 넣지 않는다(틀린 라벨은 조용한 오분류를 만든다).
+* 스크립트는 저장소 밖(`%TEMP%`)에 있다 — 필요하면 `scripts/` 로 승격해도 된다(Windows 전용).
+
+### 📦 크롭 라이브러리 현황 (2026-09-23, 32개)
+Ahri·Akali·Alistar·Amumu·Azir·Camille·Cassiopeia·Cinderling·Diana·Elise·Ezreal·Gromp·Karma·Kayle·
+Kobuko·Kog'Maw·LeBlanc·Leona·Lillia·Pebbles·Rakan·Rammus·Scuttlecrab·Sejuani·Tristana·Varus·Veigar·
+Warwick·Xayah·Yorick·Yunara + 떠돌이(6코, 코스트 표에 없음)
+실게임 인식 실적: 신규 크롭 직후부터 **93~100%** 로 확정, 미등록·빈 칸은 확인 필요(오인 0).
+
+### ⚠️ 네 번째 발견 — 진단 문구가 사용자를 엉뚱한 곳으로 보냈다
+
 ### ⚠️ 네 번째 발견 — 진단 문구가 사용자를 엉뚱한 곳으로 보냈다
 코스트 표에 없는 유닛을 `reason` 없이 `review` 에 넣어서 요약이
 `모호(Varus vs 심술두꺼비, 마진 0.259)` 로 출력됐다. 실제 원인은 '코스트 표에 없음'인데
