@@ -1,0 +1,304 @@
+{
+  "_readme": [
+    "이 파일은 scripts/fetch_item_recipes.py 가 생성한다. 손으로 고치지 말 것.",
+    "components = 그 아이템을 만드는 부품 2개. 부품 수급 계산의 기반 데이터.",
+    "'부품 2개 조합'이 아닌 아이템(유물/상징/찬란한 등)은 의도적으로 제외된다.",
+    "갱신: py -3 scripts/fetch_item_recipes.py"
+  ],
+  "source": "tft.ninja /items/<slug> (부품 이미지 파싱) + Riot Data Dragon tft-item.json(부품명)",
+  "data_dragon_version": "16.18.1",
+  "component_names": [
+    "B.F. Sword",
+    "Chain Vest",
+    "Giant's Belt",
+    "Needlessly Large Rod",
+    "Negatron Cloak",
+    "Recurve Bow",
+    "Sparring Gloves",
+    "Spatula",
+    "Tear of the Goddess"
+  ],
+  "recipes": {
+    "Adaptive Helm": {
+      "components": [
+        "Negatron Cloak",
+        "Tear of the Goddess"
+      ],
+      "source": "tft.ninja /items/adaptive-helm (부품 이미지 파싱)",
+      "slug": "adaptive-helm"
+    },
+    "Archangel's Staff": {
+      "components": [
+        "Needlessly Large Rod",
+        "Tear of the Goddess"
+      ],
+      "source": "tft.ninja /items/archangels-staff (부품 이미지 파싱)",
+      "slug": "archangels-staff"
+    },
+    "Blue Buff": {
+      "components": [
+        "Tear of the Goddess",
+        "Tear of the Goddess"
+      ],
+      "source": "tft.ninja /items/blue-buff (부품 이미지 파싱)",
+      "slug": "blue-buff"
+    },
+    "Bramble Vest": {
+      "components": [
+        "Chain Vest",
+        "Chain Vest"
+      ],
+      "source": "tft.ninja /items/bramble-vest (부품 이미지 파싱)",
+      "slug": "bramble-vest"
+    },
+    "Crownguard": {
+      "components": [
+        "Chain Vest",
+        "Needlessly Large Rod"
+      ],
+      "source": "tft.ninja /items/crownguard (부품 이미지 파싱)",
+      "slug": "crownguard"
+    },
+    "Deathblade": {
+      "components": [
+        "B.F. Sword",
+        "B.F. Sword"
+      ],
+      "source": "tft.ninja /items/deathblade (부품 이미지 파싱)",
+      "slug": "deathblade"
+    },
+    "Dragon's Claw": {
+      "components": [
+        "Negatron Cloak",
+        "Negatron Cloak"
+      ],
+      "source": "tft.ninja /items/dragons-claw (부품 이미지 파싱)",
+      "slug": "dragons-claw"
+    },
+    "Evenshroud": {
+      "components": [
+        "Giant's Belt",
+        "Negatron Cloak"
+      ],
+      "source": "tft.ninja /items/evenshroud (부품 이미지 파싱)",
+      "slug": "evenshroud"
+    },
+    "Giant Slayer": {
+      "components": [
+        "B.F. Sword",
+        "Recurve Bow"
+      ],
+      "source": "tft.ninja /items/giant-slayer (부품 이미지 파싱)",
+      "slug": "giant-slayer"
+    },
+    "Guinsoo's Rageblade": {
+      "components": [
+        "Needlessly Large Rod",
+        "Recurve Bow"
+      ],
+      "source": "tft.ninja /items/guinsoos-rageblade (부품 이미지 파싱)",
+      "slug": "guinsoos-rageblade"
+    },
+    "Hextech Gunblade": {
+      "components": [
+        "B.F. Sword",
+        "Needlessly Large Rod"
+      ],
+      "source": "tft.ninja /items/hextech-gunblade (부품 이미지 파싱)",
+      "slug": "hextech-gunblade"
+    },
+    "Infinity Edge": {
+      "components": [
+        "B.F. Sword",
+        "Sparring Gloves"
+      ],
+      "source": "tft.ninja /items/infinity-edge (부품 이미지 파싱)",
+      "slug": "infinity-edge"
+    },
+    "Ionic Spark": {
+      "components": [
+        "Needlessly Large Rod",
+        "Negatron Cloak"
+      ],
+      "source": "tft.ninja /items/ionic-spark (부품 이미지 파싱)",
+      "slug": "ionic-spark"
+    },
+    "Jeweled Gauntlet": {
+      "components": [
+        "Needlessly Large Rod",
+        "Sparring Gloves"
+      ],
+      "source": "tft.ninja /items/jeweled-gauntlet (부품 이미지 파싱)",
+      "slug": "jeweled-gauntlet"
+    },
+    "Kraken's Fury": {
+      "components": [
+        "Negatron Cloak",
+        "Recurve Bow"
+      ],
+      "source": "tft.ninja /items/krakens-fury (부품 이미지 파싱)",
+      "slug": "krakens-fury"
+    },
+    "Last Whisper": {
+      "components": [
+        "Recurve Bow",
+        "Sparring Gloves"
+      ],
+      "source": "tft.ninja /items/last-whisper (부품 이미지 파싱)",
+      "slug": "last-whisper"
+    },
+    "Morellonomicon": {
+      "components": [
+        "Giant's Belt",
+        "Needlessly Large Rod"
+      ],
+      "source": "tft.ninja /items/morellonomicon (부품 이미지 파싱)",
+      "slug": "morellonomicon"
+    },
+    "Nashor's Tooth": {
+      "components": [
+        "Giant's Belt",
+        "Recurve Bow"
+      ],
+      "source": "tft.ninja /items/nashors-tooth (부품 이미지 파싱)",
+      "slug": "nashors-tooth"
+    },
+    "Protector's Vow": {
+      "components": [
+        "Chain Vest",
+        "Tear of the Goddess"
+      ],
+      "source": "tft.ninja /items/protectors-vow (부품 이미지 파싱)",
+      "slug": "protectors-vow"
+    },
+    "Quicksilver": {
+      "components": [
+        "Negatron Cloak",
+        "Sparring Gloves"
+      ],
+      "source": "tft.ninja /items/quicksilver (부품 이미지 파싱)",
+      "slug": "quicksilver"
+    },
+    "Rabadon's Deathcap": {
+      "components": [
+        "Needlessly Large Rod",
+        "Needlessly Large Rod"
+      ],
+      "source": "tft.ninja /items/rabadons-deathcap (부품 이미지 파싱)",
+      "slug": "rabadons-deathcap"
+    },
+    "Red Buff": {
+      "components": [
+        "Recurve Bow",
+        "Recurve Bow"
+      ],
+      "source": "tft.ninja /items/red-buff (부품 이미지 파싱)",
+      "slug": "red-buff"
+    },
+    "Spear of Shojin": {
+      "components": [
+        "B.F. Sword",
+        "Tear of the Goddess"
+      ],
+      "source": "tft.ninja /items/spear-of-shojin (부품 이미지 파싱)",
+      "slug": "spear-of-shojin"
+    },
+    "Spirit Visage": {
+      "components": [
+        "Giant's Belt",
+        "Tear of the Goddess"
+      ],
+      "source": "tft.ninja /items/spirit-visage (부품 이미지 파싱)",
+      "slug": "spirit-visage"
+    },
+    "Steadfast Heart": {
+      "components": [
+        "Chain Vest",
+        "Sparring Gloves"
+      ],
+      "source": "tft.ninja /items/steadfast-heart (부품 이미지 파싱)",
+      "slug": "steadfast-heart"
+    },
+    "Sterak's Gage": {
+      "components": [
+        "B.F. Sword",
+        "Giant's Belt"
+      ],
+      "source": "tft.ninja /items/steraks-gage (부품 이미지 파싱)",
+      "slug": "steraks-gage"
+    },
+    "Striker's Flail": {
+      "components": [
+        "Giant's Belt",
+        "Sparring Gloves"
+      ],
+      "source": "tft.ninja /items/strikers-flail (부품 이미지 파싱)",
+      "slug": "strikers-flail"
+    },
+    "Sunfire Cape": {
+      "components": [
+        "Chain Vest",
+        "Giant's Belt"
+      ],
+      "source": "tft.ninja /items/sunfire-cape (부품 이미지 파싱)",
+      "slug": "sunfire-cape"
+    },
+    "Titan's Resolve": {
+      "components": [
+        "Chain Vest",
+        "Recurve Bow"
+      ],
+      "source": "tft.ninja /items/titans-resolve (부품 이미지 파싱)",
+      "slug": "titans-resolve"
+    },
+    "Void Staff": {
+      "components": [
+        "Recurve Bow",
+        "Tear of the Goddess"
+      ],
+      "source": "tft.ninja /items/void-staff (부품 이미지 파싱)",
+      "slug": "void-staff"
+    },
+    "Warmogs Armor": {
+      "components": [
+        "Giant's Belt",
+        "Giant's Belt"
+      ],
+      "source": "tft.ninja /items/warmogs-armor (부품 이미지 파싱)",
+      "slug": "warmogs-armor"
+    }
+  },
+  "by_slug": {
+    "adaptive-helm": "Adaptive Helm",
+    "archangel-s-staff": "Archangel's Staff",
+    "blue-buff": "Blue Buff",
+    "bramble-vest": "Bramble Vest",
+    "crownguard": "Crownguard",
+    "deathblade": "Deathblade",
+    "dragon-s-claw": "Dragon's Claw",
+    "evenshroud": "Evenshroud",
+    "giant-slayer": "Giant Slayer",
+    "guinsoo-s-rageblade": "Guinsoo's Rageblade",
+    "hextech-gunblade": "Hextech Gunblade",
+    "infinity-edge": "Infinity Edge",
+    "ionic-spark": "Ionic Spark",
+    "jeweled-gauntlet": "Jeweled Gauntlet",
+    "kraken-s-fury": "Kraken's Fury",
+    "last-whisper": "Last Whisper",
+    "morellonomicon": "Morellonomicon",
+    "nashor-s-tooth": "Nashor's Tooth",
+    "protector-s-vow": "Protector's Vow",
+    "quicksilver": "Quicksilver",
+    "rabadon-s-deathcap": "Rabadon's Deathcap",
+    "red-buff": "Red Buff",
+    "spear-of-shojin": "Spear of Shojin",
+    "spirit-visage": "Spirit Visage",
+    "steadfast-heart": "Steadfast Heart",
+    "sterak-s-gage": "Sterak's Gage",
+    "striker-s-flail": "Striker's Flail",
+    "sunfire-cape": "Sunfire Cape",
+    "titan-s-resolve": "Titan's Resolve",
+    "void-staff": "Void Staff",
+    "warmogs-armor": "Warmogs Armor"
+  }
+}

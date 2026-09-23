@@ -1,0 +1,61 @@
+{
+  "_comment": [
+    "로비 스냅샷 예시 (실제 메타 덱 data/comps_set18.json 과 맞춘 가상 로비).",
+    "board/bench 는 '이름 + 코스트 + 성급'이면 충분하다. 성급은 풀 소모량으로 환산된다(1성=1, 2성=3, 3성=9).",
+    "수동 스카우팅 / 화면인식(OpenCV) / Overwolf GEP 어디서 왔든 이 형식이면 동일하게 계산된다.",
+    "코스트는 data/set18_unit_costs.json 의 검증값과 일치시켰다 (Ahri 4, Morgana 4, Sett 4, Sentinel 4, Taric 5, Krug 3, Karma 1, Pebbles 1, ...).",
+    "스카우트 안 한 플레이어를 빼면 남은 사본이 과대평가된다(도구가 신뢰도로 경고한다)."
+  ],
+  "players": [
+    {
+      "name": "나 (아리 모르가나 진행 중)",
+      "is_me": true,
+      "board": [
+        { "champion": "Ahri", "cost": 4, "star": 1 },
+        { "champion": "Morgana", "cost": 4, "star": 1 },
+        { "champion": "Sett", "cost": 4, "star": 1 },
+        { "champion": "Krug", "cost": 3, "star": 1 },
+        { "champion": "Karma", "cost": 1, "star": 2 },
+        { "champion": "Pebbles", "cost": 1, "star": 2 }
+      ],
+      "bench": [
+        { "champion": "Ahri", "cost": 4, "star": 1 },
+        { "champion": "Sentinel", "cost": 4, "star": 1 }
+      ]
+    },
+    {
+      "name": "상대A (아리 경쟁)",
+      "board": [
+        { "champion": "Ahri", "cost": 4, "star": 1 },
+        { "champion": "Morgana", "cost": 4, "star": 1 },
+        { "champion": "Sett", "cost": 4, "star": 1 }
+      ]
+    },
+    {
+      "name": "상대B (소라카 덱)",
+      "board": [
+        { "champion": "Soraka", "cost": 4, "star": 2 },
+        { "champion": "Malphite", "cost": 4, "star": 2 },
+        { "champion": "Amumu", "cost": 4, "star": 1 }
+      ],
+      "bench": [{ "champion": "Zyra", "cost": 4, "star": 1 }]
+    },
+    {
+      "name": "상대C (니달리 시비르)",
+      "board": [
+        { "champion": "Nidalee", "cost": 4, "star": 2 },
+        { "champion": "Sivir", "cost": 4, "star": 1 },
+        { "champion": "Kog'Maw", "cost": 3, "star": 1 }
+      ]
+    },
+    {
+      "name": "상대D (베이가 리롤)",
+      "board": [
+        { "champion": "Veigar", "cost": 1, "star": 2 },
+        { "champion": "Kobuko", "cost": 1, "star": 2 },
+        { "champion": "Rek'Sai", "cost": 1, "star": 1 },
+        { "champion": "Rammus", "cost": 3, "star": 1 }
+      ]
+    }
+  ]
+}

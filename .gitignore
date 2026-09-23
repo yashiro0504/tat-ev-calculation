@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 로컬 실행 산출물 (재생성 가능)
+*.bmp
+out.txt
+data/my_board.json
+data/sim_board.json
+data/crops/
+data/layout_1920x1080.json
+
+# 편집기/OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

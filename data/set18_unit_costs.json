@@ -1,0 +1,421 @@
+{
+  "_readme": [
+    "이 파일은 scripts/fetch_unit_costs.py 가 생성한다. 손으로 고치지 말 것.",
+    "용도: 컴프 JSON 의 units[].cost 를 채우기 전에 실제 값을 확인하는 근거.",
+    "컴프(comps_*.json)의 '구성'은 사람이 검토해 확정한다.",
+    "갱신: py -3 scripts/fetch_unit_costs.py --from-comps data/comps_set18.json"
+  ],
+  "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)",
+  "patch": "18.1",
+  "units": {
+    "ahri": {
+      "name": "Ahri",
+      "cost": 4,
+      "traits": [
+        "Blossom",
+        "Spellweaver"
+      ],
+      "patch": "18.1",
+      "slug": "ahri",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "alune": {
+      "name": "Alune",
+      "cost": 5,
+      "traits": [
+        "Attuned",
+        "Lunar",
+        "Spellweaver"
+      ],
+      "patch": "18.1",
+      "slug": "alune",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "amumu": {
+      "name": "Amumu",
+      "cost": 4,
+      "traits": [
+        "Inferno",
+        "Juggernaut"
+      ],
+      "patch": "18.1",
+      "slug": "amumu",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "aphelios": {
+      "name": "Aphelios",
+      "cost": 4,
+      "traits": [
+        "Lunar",
+        "Rapidfire"
+      ],
+      "patch": "18.1",
+      "slug": "aphelios",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "azir": {
+      "name": "Azir",
+      "cost": 3,
+      "traits": [
+        "Blackthorn",
+        "Executioner",
+        "Summoner"
+      ],
+      "patch": "18.1",
+      "slug": "azir",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "brambleback": {
+      "name": "Brambleback",
+      "cost": 4,
+      "traits": [
+        "Riftbeast",
+        "Ravager"
+      ],
+      "patch": "18.1",
+      "slug": "brambleback",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "cassiopeia": {
+      "name": "Cassiopeia",
+      "cost": 3,
+      "traits": [
+        "Coven",
+        "Spellweaver"
+      ],
+      "patch": "18.1",
+      "slug": "cassiopeia",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "cinderling": {
+      "name": "Cinderling",
+      "cost": 1,
+      "traits": [
+        "Riftbeast",
+        "Hunter"
+      ],
+      "patch": "18.1",
+      "slug": "cinderling",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "diana": {
+      "name": "Diana",
+      "cost": 3,
+      "traits": [
+        "Lunar",
+        "Ravager",
+        "Vanguard"
+      ],
+      "patch": "18.1",
+      "slug": "diana",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "fiddlesticks": {
+      "name": "Fiddlesticks",
+      "cost": 3,
+      "traits": [
+        "Flora",
+        "Fatalis",
+        "Defender",
+        "Spellweaver"
+      ],
+      "patch": "18.1",
+      "slug": "fiddlesticks",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "gnar": {
+      "name": "Gnar",
+      "cost": 5,
+      "traits": [
+        "Elderwood",
+        "Sprykin",
+        "Brawler"
+      ],
+      "patch": "18.1",
+      "slug": "gnar",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "hecarim": {
+      "name": "Hecarim",
+      "cost": 3,
+      "traits": [
+        "Elderwood",
+        "Vanguard"
+      ],
+      "patch": "18.1",
+      "slug": "hecarim",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "karma": {
+      "name": "Karma",
+      "cost": 1,
+      "traits": [
+        "Blossom",
+        "Spellweaver"
+      ],
+      "patch": "18.1",
+      "slug": "karma",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "kobuko": {
+      "name": "Kobuko",
+      "cost": 1,
+      "traits": [
+        "Sprykin",
+        "Brawler"
+      ],
+      "patch": "18.1",
+      "slug": "kobuko",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "kogmaw": {
+      "name": "Kog'Maw",
+      "cost": 3,
+      "traits": [
+        "Caustic",
+        "Adaptor",
+        "Invoker"
+      ],
+      "patch": "18.1",
+      "slug": "kogmaw",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "krug": {
+      "name": "Krug",
+      "cost": 3,
+      "traits": [
+        "Riftbeast",
+        "Brawler"
+      ],
+      "patch": "18.1",
+      "slug": "krug",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "leona": {
+      "name": "Leona",
+      "cost": 1,
+      "traits": [
+        "Solar",
+        "Defender"
+      ],
+      "patch": "18.1",
+      "slug": "leona",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "lillia": {
+      "name": "Lillia",
+      "cost": 4,
+      "traits": [
+        "Fae",
+        "Defender"
+      ],
+      "patch": "18.1",
+      "slug": "lillia",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "malphite": {
+      "name": "Malphite",
+      "cost": 4,
+      "traits": [
+        "Blackthorn",
+        "Monolith"
+      ],
+      "patch": "18.1",
+      "slug": "malphite",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "mama-beak": {
+      "name": "Mama Beak",
+      "cost": 3,
+      "traits": [
+        "Riftbeast",
+        "Summoner",
+        "Rapidfire"
+      ],
+      "patch": "18.1",
+      "slug": "mama-beak",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "morgana": {
+      "name": "Morgana",
+      "cost": 4,
+      "traits": [
+        "Coven",
+        "Invoker"
+      ],
+      "patch": "18.1",
+      "slug": "morgana",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "nidalee": {
+      "name": "Nidalee",
+      "cost": 4,
+      "traits": [
+        "Primal",
+        "Adaptor"
+      ],
+      "patch": "18.1",
+      "slug": "nidalee",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "ornn": {
+      "name": "Ornn",
+      "cost": 1,
+      "traits": [
+        "Elderwood",
+        "Defender"
+      ],
+      "patch": "18.1",
+      "slug": "ornn",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "pebbles": {
+      "name": "Pebbles",
+      "cost": 1,
+      "traits": [
+        "Riftbeast",
+        "Invoker"
+      ],
+      "patch": "18.1",
+      "slug": "pebbles",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "rammus": {
+      "name": "Rammus",
+      "cost": 3,
+      "traits": [
+        "Sprykin",
+        "Defender"
+      ],
+      "patch": "18.1",
+      "slug": "rammus",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "reksai": {
+      "name": "Rek'Sai",
+      "cost": 1,
+      "traits": [
+        "Blackthorn",
+        "Brawler"
+      ],
+      "patch": "18.1",
+      "slug": "reksai",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "sentinel": {
+      "name": "Sentinel",
+      "cost": 4,
+      "traits": [
+        "Riftbeast",
+        "Vanguard",
+        "Invoker"
+      ],
+      "patch": "18.1",
+      "slug": "sentinel",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "sett": {
+      "name": "Sett",
+      "cost": 4,
+      "traits": [
+        "Blossom",
+        "Brawler"
+      ],
+      "patch": "18.1",
+      "slug": "sett",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "shen": {
+      "name": "Shen",
+      "cost": 2,
+      "traits": [
+        "Inferno",
+        "Defender"
+      ],
+      "patch": "18.1",
+      "slug": "shen",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "sivir": {
+      "name": "Sivir",
+      "cost": 4,
+      "traits": [
+        "Primal",
+        "Hunter"
+      ],
+      "patch": "18.1",
+      "slug": "sivir",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "soraka": {
+      "name": "Soraka",
+      "cost": 4,
+      "traits": [
+        "Flora",
+        "Fatalis",
+        "Executioner"
+      ],
+      "patch": "18.1",
+      "slug": "soraka",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "taric": {
+      "name": "Taric",
+      "cost": 5,
+      "traits": [
+        "Emerald",
+        "Aspect",
+        "Vanguard"
+      ],
+      "patch": "18.1",
+      "slug": "taric",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "teemo": {
+      "name": "Teemo",
+      "cost": 2,
+      "traits": [
+        "Sprykin",
+        "Invoker"
+      ],
+      "patch": "18.1",
+      "slug": "teemo",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "veigar": {
+      "name": "Veigar",
+      "cost": 1,
+      "traits": [
+        "Blackthorn",
+        "Sprykin",
+        "Spellweaver"
+      ],
+      "patch": "18.1",
+      "slug": "veigar",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "yorick": {
+      "name": "Yorick",
+      "cost": 1,
+      "traits": [
+        "Blossom",
+        "Juggernaut",
+        "Summoner"
+      ],
+      "patch": "18.1",
+      "slug": "yorick",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "zyra": {
+      "name": "Zyra",
+      "cost": 4,
+      "traits": [
+        "Thornmaiden",
+        "Summoner"
+      ],
+      "patch": "18.1",
+      "slug": "zyra",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    }
+  }
+}
