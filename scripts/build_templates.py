@@ -36,6 +36,12 @@ from tftcalc.cv.screen import Image, load_bmp  # noqa: E402
 DDRAGON_VERSION = "16.18.1"
 ICON_URL = "https://ddragon.leagueoflegends.com/cdn/{version}/img/champion/{icon}.png"
 
+#: 이 값 미만이면 "빈 칸일 수 있다"고 **경고**만 한다(건너뛰지는 않는다).
+#: 실측(2026-09-23, 칸 223x176): 빈 상점 칸 132~490 / 실제 카드 1714~4656.
+#: 다만 분산은 칸 면적에 비례하므로 벤치(130x122)처럼 작은 칸에는 그대로 못 쓴다 —
+#: 그래서 하드 컷이 아니라 경고로 둔다(건너뛰기는 '이름표 그대로' 규칙이 담당).
+FLAT_CROP_WARNING = 600.0
+
 #: Data Dragon 아이콘 파일명이 이름과 다른 예외들(전부는 아니며 --map 으로 보충)
 ICON_ALIASES = {
     "kogmaw": "KogMaw",
@@ -141,21 +147,41 @@ def build_from_ddragon(
 
 
 def build_from_crops(directory: Path, grid: int) -> tuple[list[fingerprint.Template], list[str]]:
+    """라벨링된 크롭 BMP 폴더 -> 템플릿. 파일명이 곧 유닛 이름이다.
+
+    **라벨링 안 된 크롭(``shop_3``, ``bench_7`` …)은 건너뛴다.** 실측 회귀(2026-09-23):
+    빈 칸 크롭 하나가 ``shop_4`` 라는 이름으로 템플릿이 되어, 다른 빈 칸을 'shop_4' 로
+    **오인**했다(빈 칸끼리는 지문이 거의 같다). 이름표 그대로인 파일은 '아직 안 붙였다'는
+    신호이므로, 넣지 말고 알려준다.
+    """
+    unlabeled = re.compile(r"^(shop|bench|board)_\d+$", re.IGNORECASE)
     templates: list[fingerprint.Template] = []
     failures: list[str] = []
     for path in sorted(directory.glob("*.bmp")):
+        if unlabeled.match(path.stem):
+            failures.append(
+                f"{path.name}: 이름표 그대로(라벨링 필요) — 챔피언 이름으로 바꾼 뒤 다시 실행"
+            )
+            continue
         try:
             image = load_bmp(str(path))
         except ValueError as exc:
             failures.append(f"{path.name}: {exc}")
             continue
-        templates.append(
-            fingerprint.Template(
-                name=path.stem,
-                values=fingerprint.fingerprint(image, grid=grid),
+        values = fingerprint.fingerprint(image, grid=grid)
+        if not any(values):
+            failures.append(
+                f"{path.name}: 지문이 단조로움(빈 칸/단색으로 보임) — 건너뜀"
             )
-        )
-        print(f"[OK] {path.stem:<16} <- {path.name} ({image.width}x{image.height})")
+            continue
+        variance = image.variance()
+        if variance < FLAT_CROP_WARNING:
+            print(
+                f"[주의] {path.name}: 분산 {variance:.0f} 이 낮습니다(빈 칸일 수 있음). "
+                "빈 칸 템플릿은 다른 빈 칸과 매칭돼 오인을 만듭니다."
+            )
+        templates.append(fingerprint.Template(name=path.stem, values=values))
+        print(f"[OK] {path.stem:<16} <- {path.name} ({image.width}x{image.height}, 분산 {variance:.0f})")
     return templates, failures
 
 
@@ -241,13 +267,22 @@ def main(argv: list[str] | None = None) -> int:
             print(f"    - {line}")
 
     if failures:
-        print(f"\n실패/건너뜀 {len(failures)}건 (TFT 전용 유닛은 Data Dragon 에 없습니다):")
-        for line in failures:
-            print(f"  - {line}")
-        print(
-            "  -> 이 유닛들은 게임 화면에서 크롭해 data/crops/<이름>.bmp 로 넣고 "
-            "`--from-crops data/crops` 로 생성하세요."
-        )
+        if args.from_crops:
+            print(f"\n건너뜀 {len(failures)}건 (크롭 폴더: {args.from_crops}):")
+            for line in failures:
+                print(f"  - {line}")
+            print(
+                "  -> 파일명을 챔피언 이름으로 바꾸고 다시 실행하세요. "
+                "빈 칸 크롭은 넣지 않습니다(다른 빈 칸과 매칭돼 오인을 만듭니다)."
+            )
+        else:
+            print(f"\n실패/건너뜀 {len(failures)}건 (TFT 전용 유닛은 Data Dragon 에 없습니다):")
+            for line in failures:
+                print(f"  - {line}")
+            print(
+                "  -> 이 유닛들은 게임 화면에서 크롭해 data/crops/<이름>.bmp 로 넣고 "
+                "`--from-crops data/crops` 로 생성하세요."
+            )
     return 0 if templates else 1
 
 
