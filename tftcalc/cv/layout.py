@@ -65,6 +65,9 @@ INFO_REGIONS: dict[str, tuple[float, float, float, float]] = {
     "stage_round": (0.455, 0.012, 0.090, 0.030),
 }
 
+#: ``INFO_REGIONS`` 중 **단일 숫자**로 읽는 영역. 라운드('4-2')는 구분자가 있어 따로 읽는다.
+NUMERIC_INFO_KEYS: tuple[str, ...] = ("gold", "level", "my_hp")
+
 #: 슬롯 박스 **안에서** 별(성급)이 찍히는 상대 영역 (x0, y0, x1, y1).
 #: 별은 칸마다 같은 위치(하단 띠)에 1~3개가 같은 모양으로 찍히므로, 칸 전체가 아니라
 #: 이 띠만 잘라서 개수를 센다. 칸 안 비율이라 해상도가 달라도 그대로 환산된다.

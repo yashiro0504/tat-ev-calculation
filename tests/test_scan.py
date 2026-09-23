@@ -20,6 +20,7 @@ if str(ROOT) not in sys.path:
 
 from tftcalc import cli, lobby  # noqa: E402
 from tftcalc.cv import fingerprint, layout, ocr, scan, screen  # noqa: E402
+from tests.fixtures import blank, digit_templates, number, paste, with_separator  # noqa: E402
 
 
 def make_pattern(pattern_id: int, width: int, height: int) -> screen.Image:
@@ -363,6 +364,58 @@ class TestStarOcr(unittest.TestCase):
         self.assertEqual(report.recognized[0]["star"], 1)
         self.assertFalse(report.star_ocr)
         self.assertIn("--star-ocr", "\n".join(report.summary_lines()))
+
+
+class TestInfoOcrIntegration(unittest.TestCase):
+    """``scan`` 이 ``layout.INFO_REGIONS`` 의 **올바른 영역**에서 숫자/라운드를 읽는지.
+
+    좌표 배선이 틀리면 "읽히긴 하는데 엉뚱한 값" 이라는 조용한 오류가 나므로,
+    각 영역에 실제로 숫자를 그려 넣고 결과가 그 값과 일치하는지 확인한다.
+    """
+
+    EMPTY_TEMPLATES = fingerprint.TemplateSet(grid=8, templates=[], source="빈")
+
+    def _canvas_with_info(self) -> screen.Image:
+        canvas = blank(layout.BASE_WIDTH, layout.BASE_HEIGHT)
+        for key, text in (("gold", "62"), ("level", "8"), ("my_hp", "41")):
+            x, y, _w, _h = layout.to_pixels(
+                layout.INFO_REGIONS[key], canvas.width, canvas.height
+            )
+            paste(canvas, number(text), x, y)
+        x, y, _w, _h = layout.to_pixels(
+            layout.INFO_REGIONS["stage_round"], canvas.width, canvas.height
+        )
+        paste(canvas, with_separator("4", "2"), x, y)
+        return canvas
+
+    def test_reads_gold_level_hp_and_round(self):
+        report = scan.scan(
+            self._canvas_with_info(),
+            self.EMPTY_TEMPLATES,
+            {},
+            which=(),
+            digit_templates=digit_templates(),
+        )
+        self.assertEqual(report.info["gold"], 62)
+        self.assertEqual(report.info["level"], 8)
+        self.assertEqual(report.info["my_hp"], 41)
+        self.assertEqual(report.stage_round, (4, 2))
+        summary = "\n".join(report.summary_lines())
+        self.assertIn("골드 62", summary)
+        self.assertIn("라운드 4-2", summary)
+        self.assertFalse(any("손 입력" in note for note in report.notes))
+
+    def test_without_digits_everything_is_none_and_flagged(self):
+        report = scan.scan(
+            self._canvas_with_info(), self.EMPTY_TEMPLATES, {}, which=()
+        )
+        self.assertEqual(sorted(report.info), ["gold", "level", "my_hp"])
+        self.assertTrue(all(value is None for value in report.info.values()))
+        self.assertIsNone(report.stage_round)
+        notes = "\n".join(report.notes)
+        self.assertIn("손 입력 필요", notes)
+        self.assertIn("--digits", notes)
+        self.assertIn("라운드 ?", "\n".join(report.summary_lines()))
 
 
 class TestCliScanAndReport(unittest.TestCase):

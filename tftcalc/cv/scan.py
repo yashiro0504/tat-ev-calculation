@@ -69,8 +69,10 @@ class ScanReport:
     by_area: dict[str, list[dict[str, object]]] = field(default_factory=dict)
     #: 이 스캔에 적용된 가정(예: --shop-as-owned). 요약에 '[가정]' 으로 출력된다.
     notes: list[str] = field(default_factory=list)
-    #: 숫자 OCR 결과(골드/레벨/HP/라운드). 못 읽으면 ``None`` — 0 으로 추정하지 않는다.
+    #: 숫자 OCR 결과(골드/레벨/HP). 못 읽으면 ``None`` — 0 으로 추정하지 않는다.
     info: dict[str, int | None] = field(default_factory=dict)
+    #: 라운드 표기 OCR 결과('4-2' -> ``(4, 2)``). 못 읽으면 ``None``.
+    stage_round: tuple[int, int] | None = None
     #: 별(성급) 인식을 켰는지. 요약 문구가 이 값에 따라 달라진다.
     star_ocr: bool = True
 
@@ -114,12 +116,19 @@ class ScanReport:
                 )
         for note in self.notes:
             lines.append(f"  [가정] {note}")
-        if self.info:
+        if self.info or self.stage_round is not None:
             shown = " / ".join(
                 f"{label} {self.info.get(key) if self.info.get(key) is not None else '?'}"
                 for key, label in (("gold", "골드"), ("level", "레벨"), ("my_hp", "HP"))
             )
-            lines.append(f"  [정보] {shown}  ('?' = 못 읽음 → 손 입력)")
+            round_text = (
+                f"{self.stage_round[0]}-{self.stage_round[1]}"
+                if self.stage_round is not None
+                else "?"
+            )
+            lines.append(
+                f"  [정보] {shown} / 라운드 {round_text}  ('?' = 못 읽음 → 손 입력)"
+            )
         if self.star_ocr:
             lines.append(
                 "  ※ 성급은 별 인식 결과입니다(임계값은 아직 캘리브레이션 전 — 실게임 화면에서 "
@@ -155,8 +164,8 @@ def scan(
       별 영역의 밝기 비율은 아이콘 자체의 밝은 픽셀과 섞이기 쉬워, 임계값을 실게임
       화면에 맞추기 전에는 1성을 2성으로 읽는 식의 **조용한 3배 오차**가 날 수 있다.
       켜면 애매/과대 비율은 확정하지 않고 '확인 필요'로 뺀다(``--star-ocr``).
-    * ``digit_templates`` 가 있으면 골드/레벨/HP 를 읽어 ``info`` 에 담는다. 없으면 전부
-      ``None`` 이고 '손 입력 필요'가 고지된다.
+    * ``digit_templates`` 가 있으면 골드/레벨/HP 를 읽어 ``info`` 에, 라운드 표기('4-2')를
+      ``stage_round`` 에 담는다. 없으면 전부 ``None`` 이고 '손 입력 필요'가 고지된다.
     """
     stars = {key.lower(): value for key, value in (star_overrides or {}).items()}
     results = layout.read_slots(image, template_set, which=which, overrides=overrides)
@@ -230,21 +239,33 @@ def scan(
 
     has_digits = bool(digit_templates and digit_templates.templates)
     info_regions = layout.resolve_info(overrides)
-    info: dict[str, int | None] = {key: None for key in info_regions}
+    info: dict[str, int | None] = {key: None for key in layout.NUMERIC_INFO_KEYS}
+    stage_round: tuple[int, int] | None = None
     if has_digits:
-        for key, box in info_regions.items():
+        for key in layout.NUMERIC_INFO_KEYS:
             info[key] = ocr.read_number(
-                ocr.crop_box(image, layout.to_pixels(box, image.width, image.height)),
+                ocr.crop_box(
+                    image, layout.to_pixels(info_regions[key], image.width, image.height)
+                ),
                 digit_templates,  # type: ignore[arg-type]
             )
-    unread = [key for key in ("gold", "level", "my_hp") if info.get(key) is None]
+        stage_round = ocr.read_round(
+            ocr.crop_box(
+                image,
+                layout.to_pixels(
+                    info_regions["stage_round"], image.width, image.height
+                ),
+            ),
+            digit_templates,  # type: ignore[arg-type]
+        )
+    digit_hint = "" if has_digits else "(숫자 템플릿이 없습니다: --digits)"
+    unread = [key for key in layout.NUMERIC_INFO_KEYS if info.get(key) is None]
     if unread:
         notes.append(
-            "숫자(" + ", ".join(unread) + ") 미인식 -> 손 입력 필요"
-            + ("" if has_digits else "(숫자 템플릿이 없습니다: --digits)")
+            "숫자(" + ", ".join(unread) + ") 미인식 -> 손 입력 필요" + digit_hint
         )
-    if info.get("stage_round") is None:
-        notes.append("라운드 표기('4-2')는 구분자 처리 미구현이라 읽지 않습니다(손 입력).")
+    if stage_round is None:
+        notes.append("라운드 표기('4-2') 미인식 -> 손 입력 필요" + digit_hint)
 
     mine: dict[str, object] = {"name": name, "is_me": True}
     for area in AREA_ORDER:
@@ -260,6 +281,7 @@ def scan(
         by_area=by_area,
         notes=notes,
         info=info,
+        stage_round=stage_round,
         star_ocr=detect_stars,
     )
 

@@ -1,7 +1,7 @@
 # 작업 이어하기 가이드 (집에서 이어서)
 
 > 이 문서는 **다른 PC에서 바로 이어서 작업**하기 위한 런북입니다.
-> 현재 상태: 커밋 `ce27dd5` (main), 테스트 254개 전부 통과, CLI 13개 명령, 외부 의존성 0개.
+> 현재 상태: 커밋 `ce27dd5` (main), 테스트 263개 전부 통과, CLI 13개 명령, 외부 의존성 0개.
 
 ---
 
@@ -15,9 +15,9 @@ python -m tftcalc.cli selftest  # 환경/데이터 자기점검
 
 **설치할 것이 없습니다.** Python 3.12+ 표준 라이브러리만 씁니다(ctypes 포함). `requirements.txt`를 만들지 마세요 — 무의존성이 이 프로젝트의 장점입니다.
 
-전체 테스트(13개 파일, 254개):
+전체 테스트(14개 파일, 263개):
 ```powershell
-python -m unittest discover -s tests -t .      # 가장 간단(254 tests, OK)
+python -m unittest discover -s tests -t .      # 가장 간단(263 tests, OK)
 ```
 `tests/__init__.py` 를 추가해 discover 가 동작합니다. 파일별로 돌리려면:
 
@@ -29,7 +29,7 @@ python -m unittest discover -s tests -t .      # 가장 간단(254 tests, OK)
  python tests\test_ocr.py) `
  2>&1 | Select-String 'Ran |^OK|FAILED'
 ```
-기대 출력: `Ran 39/18/15/26/16/6/27/26/32/20/8/4/17 tests` + 각각 `OK` (= 254개).
+기대 출력: `Ran 39/18/15/26/16/6/27/28/32/20/8/4/24 tests` + 각각 `OK` (= 263개).
 
 > **함정 1**: 실행기는 PC마다 다르다 — `python` 이 Microsoft Store 스텁이면 `py -3`,
 > `py` 런처가 없으면 `python`. 아래 예시는 **`python` 기준**이다.
@@ -114,9 +114,10 @@ python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3
 |---|---|
 | `tftcalc/cv/ocr.py` (신규) | `star_ratio`/`stars_from_ratio`/`count_stars` — 별 개수를 **밝은 픽셀 면적 비율**로 센다(분류 아님). `star_is_ambiguous` 로 **경계·과대 비율을 걸러낸다**. `split_digits`(열 방향 투영) + `read_number`(자릿수별 지문 분류, **하나라도 애매하면 `None`**) |
 | `tftcalc/cv/layout.py` | `STAR_BAND`(칸 안 상대 비율) + `star_band(slot_box)` — 해상도 무관 |
-| `tftcalc/cv/scan.py` | `ScanReport.info`(`gold`/`level`/`my_hp`/`stage_round`), 성급 우선순위(**지정 > 인식 > 기본값**), 미인식 고지 |
+| `tftcalc/cv/scan.py` | `ScanReport.info`(`gold`/`level`/`my_hp`) + `stage_round`, 성급 우선순위(**지정 > 인식 > 기본값**), 미인식 고지 |
 | `tftcalc/cli.py` | `--star-ocr`(켜기), `--digits`(숫자 지문 JSON) — `scan`/`report` 공통 |
-| `tests/test_ocr.py` (신규) | 합성 이미지 검증: 별 0~3 · 경계 거부 · 자릿수 분리 · 숫자(7/42/105) · 미인식 `None` |
+| `tests/test_ocr.py` (신규) | 합성 이미지 검증: 별 0~3 · 경계 거부 · 자릿수 분리 · 숫자(7/42/105) · **라운드('4-2')와 거부 케이스** · 미인식 `None` |
+| `tests/fixtures.py` (신규) | 합성 이미지 픽스처(문자 아트·사각형). `test_ocr`/`test_scan` 이 공유 |
 
 ### ⚠️ 발견한 것 — 별 인식은 **기본 꺼짐**으로 바꿨다 (계획은 "기본 켜기"였음)
 **실측**: 실제 Data Dragon 아이콘을 칸에 채운 합성 화면에서 별 영역의 밝은 비율이 **별 1개 면적의 약 12배**로 나왔다. 아이콘 자체의 밝은 픽셀이 별 영역에 섞이기 때문이다. 그 값을 그대로 쓰면 **3성(풀 소모 9장)** 으로 잡혀 계산이 조용히 **3배** 틀어진다.
@@ -126,17 +127,16 @@ python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3
 * `--star-ocr` 로 켜되, **애매하거나 과대 비율이면 그 칸을 스냅샷에서 빼고 `[확인 필요]`** 로 보고한다(추정 금지).
 * 켜서 제대로 쓰려면 `ocr.STAR_BRIGHTNESS` / `ocr.STAR_AREA_RATIO` / `layout.STAR_BAND` 를 실게임 화면에 맞춰야 한다.
 
-숫자도 마찬가지로 **`--digits` 가 없으면 아무것도 읽지 않고 전부 `None` + '손 입력 필요'** 다(0으로 추정하지 않음). `stage_round`('4-2')는 구분자 처리 미구현이라 읽지 않는다.
+숫자도 마찬가지로 **`--digits` 가 없으면 아무것도 읽지 않고 전부 `None` + '손 입력 필요'** 다(0 으로 추정하지 않음). 라운드 표기('4-2')도 같은 템플릿으로 읽으며, **조각이 3개(숫자·구분자·숫자)이고 범위(1~9 / 1~7) 안일 때만** 확정한다(라운드가 틀리면 골드 계획 전체가 어긋나므로).
 
 ### 남은 것
 * 실게임 별 영역 캘리브레이션(`check_capture.py --out shot.bmp` 로 별 위치/밝기 확인).
 * `data/digits_1920x1080.json` — 실게임 숫자를 크롭해 0~9 지문 생성(개인 캘리브레이션, `.gitignore`).
-* `stage_round` 구분자 파싱.
 
 **통과 기준(게이트)**
 1. 내 보드 성급 인식이 **수동 대조와 100% 일치**(20판 표본). 틀린 칸은 조용히 넘기지 말고 "확인 필요"로.
 2. 골드/레벨/HP 숫자 오인식 **0건**(한 자리라도 틀리면 골드 계획이 통째로 틀어짐). 실패 시 그냥 `None`.
-3. 기존 254개 테스트 전부 통과.
+3. 기존 263개 테스트 전부 통과.
 
 > 원칙 유지: 숫자/성급을 못 읽으면 **0이나 추정값을 넣지 말고 `None` + 경고**. "모르면 모른다고 말한다"가 이 프로젝트의 핵심 자산입니다.
 
@@ -157,7 +157,7 @@ python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3
 
 ## 4. 작업 규칙 (지키면 되돌리기 쉬움)
 
-1. **커밋 전**: 해당 테스트 파일 실행 → 전체 254개 `OK` 확인. 깨진 채로 커밋하지 않습니다.
+1. **커밋 전**: 해당 테스트 파일 실행 → 전체 263개 `OK` 확인. 깨진 채로 커밋하지 않습니다.
 2. **미지 데이터 추정 금지**: 모르면 `UnknownOddsError` / `InvalidOddsError` / `UnknownRecipeError`
    / `UnknownLevelError` / `UnknownIncomeError` / `unknown` / `None`.
 3. **4축 분리 유지**: 유닛(풀) · 아이템(부품) · 골드(시간) · 체력(생존)을 하나의 점수로 합치지 않습니다(차원 오류).
@@ -179,7 +179,7 @@ python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3
 | 항목 | 값 |
 |---|---|
 | 최신 커밋 | `ce27dd5` (main) — 코드 리뷰 지적사항 전체 수정(버그 8 + 저우선순위 10) |
-| 테스트 | **254개 전부 통과** — pool 39 / comp 18 / items 15 / economy 26 / survival 16 / report 6 / cv 27 / scan 26 / cli 32 / render 20 / rules 8 / trials_defaults 4 / ocr 17 |
+| 테스트 | **263개 전부 통과** — pool 39 / comp 18 / items 15 / economy 26 / survival 16 / report 6 / cv 27 / scan 28 / cli 32 / render 20 / rules 8 / trials_defaults 4 / ocr 24 |
 | CLI 명령 | **13개** — `odds selftest unit lobby outlook items plan survive report scan comp sensitivity robustness` |
 | 모듈 | `pool_math` `comp` `items` `economy` `survival` `lobby` `odds` `decision` `set_data` `trials` `render` `rules` `cli` + `cv/{screen,fingerprint,layout,scan,ocr}` |
 | 스크립트 | `build_templates` `check_capture` `crop_slots` `fetch_unit_costs` `fetch_item_recipes` `simulate_scan` |
