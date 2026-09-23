@@ -2,7 +2,7 @@
 
 > 이 문서는 **다른 PC에서 바로 이어서 작업**하기 위한 런북입니다.
 > 현재 상태: 커밋 `dacdf41` (main, origin과 동기화) + **미커밋 작업 있음**(아래 §0.5),
-> 테스트 **274개** 전부 통과, CLI 13개 명령, 외부 의존성 0개.
+> 테스트 **280개** 전부 통과, CLI 13개 명령, 외부 의존성 0개.
 > **인식은 아직 실게임에서 안 됩니다** — 좌표 캘리브레이션이 남았습니다(§1).
 
 ---
@@ -17,9 +17,9 @@ python -m tftcalc.cli selftest  # 환경/데이터 자기점검
 
 **설치할 것이 없습니다.** Python 3.12+ 표준 라이브러리만 씁니다(ctypes 포함). `requirements.txt`를 만들지 마세요 — 무의존성이 이 프로젝트의 장점입니다.
 
-전체 테스트(14개 파일, 274개):
+전체 테스트(15개 파일, 280개):
 ```powershell
-python -m unittest discover -s tests -t .      # 가장 간단(274 tests, OK)
+python -m unittest discover -s tests -t .      # 가장 간단(280 tests, OK)
 ```
 `tests/__init__.py` 를 추가해 discover 가 동작합니다. 파일별로 돌리려면:
 
@@ -31,7 +31,7 @@ python -m unittest discover -s tests -t .      # 가장 간단(274 tests, OK)
  python tests\test_ocr.py) `
  2>&1 | Select-String 'Ran |^OK|FAILED'
 ```
-기대 출력: `Ran 39/18/15/26/16/6/35/30/32/20/8/4/24 tests` + 각각 `OK` (= 274개).
+기대 출력: `Ran 39/18/15/26/16/6/37/30/32/20/8/4/24/5 tests` + 각각 `OK` (= 280개).
 
 > **함정 1**: 실행기는 PC마다 다르다 — `python` 이 Microsoft Store 스텁이면 `py -3`,
 > `py` 런처가 없으면 `python`. 아래 예시는 **`python` 기준**이다.
@@ -133,15 +133,23 @@ python scripts\fetch_unit_costs.py --sleep 0.3 --out $env:TEMP\costs_p1.json --u
 # ... p6 까지 나눠 실행한 뒤, 각 조각의 units 를 모아 save() 로 병합(형식 유지)
 ```
 
-### ✅ 벤치는 상점 템플릿으로 못 읽는다 (측정, 2026-09-23)
-벤치 9칸을 상점 크롭 템플릿 22개로 분류한 결과: 최고 유사도 **0.39~0.64**, 1·2등 마진 0.002~0.05
-→ 전부 `확인 필요`(**오인 0**). 벤치 유닛은 3D 모델, 상점은 2D 카드 아트라 같은 챔피언이어도
-지문이 겹치지 않는다. **벤치는 벤치 전용 크롭 + 사람 라벨링이 필요하다.**
+### ✅ 벤치 인식: 라벨을 붙이면 된다 (측정, 2026-09-23)
+* **상점 템플릿으로는 못 읽는다**: 벤치 9칸 vs 상점 크롭 템플릿 = 최고 0.39~0.64(마진 0.002~0.05)
+  → 전부 `확인 필요`(오인 0). 3D 모델과 2D 카드 아트는 지문이 겹치지 않는다.
+* **벤치 전용 크롭 + 라벨**을 붙이면 인식된다(실측: `bench_1 = Camille 1코 100%`,
+  `bench_2 = Caitlyn 2코 100%`).
+* ⚠️ **벤치 칸끼리 유사도가 최대 0.855** 로 측정됐다(벤치_2·3·4 상호 0.855, 같은 챔피언이
+  애니메이션 프레임마다 흔들리는 것으로 보임). 바닥선 0.85와 **거의 겹치므로** 벤치는
+  경계 사례가 생기기 쉽다 → 애매하면 `확인 필요`로 두고, 필요하면 **샘플을 여러 장** 모은다.
+* 같은 챔피언의 여러 샘플은 파일명 `@` 로 구분한다: `Camille.bmp`(상점) + `Camille@bench.bmp`(벤치).
+  라벨은 `@` 앞부분이라 코스트 표 이름과 계속 맞고, 2등 마진은 **다른 이름**과 비교한다
+  (같은 이름 샘플끼리 비교하면 마진이 0이 되어 그 챔피언이 통째로 '확인 필요'가 된다 — 수정함).
 
-라벨링을 싸게 하는 방법:
-1. `python %TEMP%\cycle.py` 같은 스크립트로 `data\crops\bench_N.bmp` 를 저장하고,
-2. 벤치 9칸을 3x3 으로 이어 붙인 **작은 합성 이미지**를 만들어 눈으로 보고(또는 사용자에게 확인),
-3. 파일명을 챔피언 이름으로 바꾼 뒤 `build_templates.py --from-crops` 로 합친다.
+라벨링 방법:
+1. `python %TEMP%\benchcrops.py` 로 `data\crops\bench_N.bmp` 저장(분산으로 빈 칸 판별),
+2. 사용자가 벤치 유닛 이름을 알려주면 `bench_1.bmp -> Camille@bench.bmp` 처럼 바꾸고,
+3. `build_templates.py --from-crops data/crops` (라벨 없는 `bench_N` 은 자동으로 건너뛴다).
+
 
 ### 💡 팁: 이름표만 모은 작은 이미지로 챔피언 이름을 읽는다
 상점 카드 5장을 통째로 읽으면 이미지가 커서(수백 KB) 한도에 걸릴 수 있다. 카드 하단 **이름표
@@ -256,7 +264,7 @@ python -m tftcalc.cli scan --templates data\templates_set18.json --window TFT --
 **게이트(통과 기준)**
 1. 상점 5칸 중 템플릿이 있는 챔피언은 **유사도 0.95 이상으로 확정**(실측 0.985~1.000).
 2. 템플릿에 없는 챔피언·빈 칸은 **확정되지 않는다**(실측 0.72~0.75 → 확인 필요).
-3. 기존 274개 테스트 전부 통과.
+3. 기존 280개 테스트 전부 통과.
 
 ```powershell
 # 1) TFT를 창모드(또는 전체화면 창모드)로 띄우고 상점이 보이는 상태에서
@@ -374,7 +382,7 @@ python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3
 **통과 기준(게이트)**
 1. 내 보드 성급 인식이 **수동 대조와 100% 일치**(20판 표본). 틀린 칸은 조용히 넘기지 말고 "확인 필요"로.
 2. 골드/레벨/HP 숫자 오인식 **0건**(한 자리라도 틀리면 골드 계획이 통째로 틀어짐). 실패 시 그냥 `None`.
-3. 기존 274개 테스트 전부 통과.
+3. 기존 280개 테스트 전부 통과.
 
 > 원칙 유지: 숫자/성급을 못 읽으면 **0이나 추정값을 넣지 말고 `None` + 경고**. "모르면 모른다고 말한다"가 이 프로젝트의 핵심 자산입니다.
 
@@ -395,7 +403,7 @@ python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3
 
 ## 4. 작업 규칙 (지키면 되돌리기 쉬움)
 
-1. **커밋 전**: 해당 테스트 파일 실행 → 전체 274개 `OK` 확인. 깨진 채로 커밋하지 않습니다.
+1. **커밋 전**: 해당 테스트 파일 실행 → 전체 280개 `OK` 확인. 깨진 채로 커밋하지 않습니다.
 2. **미지 데이터 추정 금지**: 모르면 `UnknownOddsError` / `InvalidOddsError` / `UnknownRecipeError`
    / `UnknownLevelError` / `UnknownIncomeError` / `unknown` / `None`.
 3. **4축 분리 유지**: 유닛(풀) · 아이템(부품) · 골드(시간) · 체력(생존)을 하나의 점수로 합치지 않습니다(차원 오류).
@@ -417,7 +425,7 @@ python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3
 | 항목 | 값 |
 |---|---|
 | 최신 커밋 | `dacdf41` (main, origin과 동기화) + §0.5 의 미커밋 작업 |
-| 테스트 | **274개 전부 통과** — pool 39 / comp 18 / items 15 / economy 26 / survival 16 / report 6 / cv 36 / scan 30 / cli 32 / render 20 / rules 8 / trials_defaults 4 / ocr 24 |
+| 테스트 | **280개 전부 통과** — pool 39 / comp 18 / items 15 / economy 26 / survival 16 / report 6 / cv 37 / scan 30 / cli 32 / render 20 / rules 8 / trials_defaults 4 / ocr 24 / build_templates 5 |
 | CLI 명령 | **13개** — `odds selftest unit lobby outlook items plan survive report scan comp sensitivity robustness` |
 | 모듈 | `pool_math` `comp` `items` `economy` `survival` `lobby` `odds` `decision` `set_data` `trials` `render` `rules` `cli` + `cv/{screen,fingerprint,layout,scan,ocr}` |
 | 스크립트 | `build_templates` `check_capture` `crop_slots` `fetch_unit_costs` `fetch_item_recipes` `simulate_scan` |

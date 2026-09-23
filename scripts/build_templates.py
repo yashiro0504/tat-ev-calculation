@@ -146,8 +146,19 @@ def build_from_ddragon(
     return templates, failures
 
 
+def crop_label(stem: str) -> str:
+    """크롭 파일명 -> 라벨(템플릿 이름).
+
+    ``Camille.bmp`` / ``Camille@bench.bmp`` / ``Camille@2.bmp`` 는 모두 라벨 ``Camille`` 다.
+    같은 챔피언의 **여러 샘플**(상점 카드 아트 + 벤치 3D 모델, 여러 판에서 딴 크롭)을 함께
+    넣을 수 있게 하려고 ``@`` 뒤를 샘플 이름으로 본다(벤치 유닛은 상점 카드와 지문이 달라
+    샘플을 따로 모아야 인식된다 — 실측: 벤치 vs 상점 템플릿 0.39~0.64).
+    """
+    return stem.split("@", 1)[0].strip()
+
+
 def build_from_crops(directory: Path, grid: int) -> tuple[list[fingerprint.Template], list[str]]:
-    """라벨링된 크롭 BMP 폴더 -> 템플릿. 파일명이 곧 유닛 이름이다.
+    """라벨링된 크롭 BMP 폴더 -> 템플릿. 파일명이 곧 유닛 이름이다(``@`` 뒤는 샘플 이름).
 
     **라벨링 안 된 크롭(``shop_3``, ``bench_7`` …)은 건너뛴다.** 실측 회귀(2026-09-23):
     빈 칸 크롭 하나가 ``shop_4`` 라는 이름으로 템플릿이 되어, 다른 빈 칸을 'shop_4' 로
@@ -180,8 +191,9 @@ def build_from_crops(directory: Path, grid: int) -> tuple[list[fingerprint.Templ
                 f"[주의] {path.name}: 분산 {variance:.0f} 이 낮습니다(빈 칸일 수 있음). "
                 "빈 칸 템플릿은 다른 빈 칸과 매칭돼 오인을 만듭니다."
             )
-        templates.append(fingerprint.Template(name=path.stem, values=values))
-        print(f"[OK] {path.stem:<16} <- {path.name} ({image.width}x{image.height}, 분산 {variance:.0f})")
+        label = crop_label(path.stem)
+        templates.append(fingerprint.Template(name=label, values=values))
+        print(f"[OK] {label:<16} <- {path.name} ({image.width}x{image.height}, 분산 {variance:.0f})")
     return templates, failures
 
 

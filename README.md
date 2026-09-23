@@ -268,7 +268,7 @@ python tests\test_render.py                       # 20 tests, OK  (표기 정직
 python tests\test_rules.py                        #  8 tests, OK  (규칙 기반 판정)
 python tests\test_trials_defaults.py              #  4 tests, OK  (시행 수 상수)
 python tests\test_ocr.py                          # 24 tests, OK  (별/숫자/라운드 OCR)
-python -m unittest discover -s tests -t .        # 위 전부 한 번에(274 tests, OK)
+python -m unittest discover -s tests -t .        # 위 전부 한 번에(280 tests, OK)
 python scripts\check_capture.py --out shot.bmp    # 캡처 확인 + 좌표 디버그
 python scripts\build_templates.py --from-comps data/comps_set18.json   # 아이콘 템플릿 생성
 python scripts\simulate_scan.py --units ahri,morgana,sett --out sim_shot.bmp  # 스캔 검증용 가짜 화면
@@ -848,7 +848,7 @@ python -m tftcalc.cli scan --templates data/templates_set18.json --in sim_shot.b
 ## 6. 다음 단계 (권장 순서 + 각 단계 게이트)
 
 > **다른 PC에서 이어서 작업할 때는 [`NEXT_STEPS.md`](NEXT_STEPS.md) 를 먼저 보세요.**
-> 클론 → 테스트 274개 확인 → 좌표 캘리브레이션 → 성급/숫자 인식 설계까지 실행 명령 단위로 정리돼 있습니다.
+> 클론 → 테스트 280개 확인 → 좌표 캘리브레이션 → 성급/숫자 인식 설계까지 실행 명령 단위로 정리돼 있습니다.
 
 | 주차 | 할 일 | 통과 기준(게이트) |
 |---|---|---|

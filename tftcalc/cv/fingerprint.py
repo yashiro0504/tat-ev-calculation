@@ -191,8 +191,14 @@ def classify(
         reverse=True,
     )
     best_score, best_name = scored[0]
-    if len(scored) > 1:
-        second_score, second_name = scored[1]
+    # 2등은 **다른 이름** 중 최고여야 한다. 같은 챔피언의 샘플이 여러 개면(예: 상점 카드 +
+    # 벤치 모델) 2등이 같은 이름이 되어 마진이 0 에 가까워지고, 그 챔피언이 통째로
+    # '확인 필요' 로 떨어진다(자기 자신과 비교하는 셈이므로).
+    rival = next(
+        ((score, name) for score, name in scored if name != best_name), None
+    )
+    if rival is not None:
+        second_score, second_name = rival
         margin = best_score - second_score
     else:
         second_name, margin = None, 1.0

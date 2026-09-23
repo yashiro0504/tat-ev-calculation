@@ -93,6 +93,33 @@ class TestFingerprint(unittest.TestCase):
         self.assertFalse(match.needs_review)
         self.assertGreater(match.margin, 0.05)
 
+    def test_duplicate_samples_do_not_break_margin(self):
+        """같은 챔피언 샘플이 여러 개여도 2등 마진은 **다른 이름**과 비교해야 한다.
+
+        Regression(2026-09-23): 상점 카드 템플릿 + 벤치 3D 모델 템플릿을 같은 이름
+        (``Camille``)으로 넣으면 2등이 같은 이름이 되어 마진이 0 에 가까워지고, 그 챔피언이
+        통째로 '확인 필요' 로 떨어진다(자기 자신과 비교하는 셈).
+        """
+        icon = make_pattern(7)
+        template_set = fingerprint.TemplateSet(
+            grid=8,
+            templates=[
+                fingerprint.Template(name="Camille", values=fingerprint.fingerprint(icon)),
+                fingerprint.Template(
+                    name="Camille", values=fingerprint.fingerprint(make_pattern(8))
+                ),
+                fingerprint.Template(
+                    name="Ahri", values=fingerprint.fingerprint(make_pattern(9))
+                ),
+            ],
+            source="테스트",
+        )
+        match = fingerprint.classify(icon, template_set)
+        self.assertEqual(match.name, "Camille")
+        self.assertFalse(match.needs_review)
+        self.assertGreater(match.margin, 0.05)
+        self.assertNotEqual(match.runner_up, "Camille")
+
     def test_blank_region_is_unknown(self):
         blank = screen.Image(width=40, height=40, pixels=bytearray(40 * 40 * 4))
         match = fingerprint.classify(blank, self.templates)

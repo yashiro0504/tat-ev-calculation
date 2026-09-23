@@ -68,6 +68,25 @@ class TestBuildFromCropsGuards(unittest.TestCase):
         self.assertEqual(len(failures), 1)
         self.assertIn("Ghost.bmp", failures[0])
 
+    def test_at_suffix_is_a_sample_name(self):
+        """``Camille@bench.bmp`` 는 라벨이 ``Camille`` — 같은 챔피언의 여러 샘플을 함께 넣는다.
+
+        벤치 유닛은 상점 카드와 지문이 크게 달라(실측 0.39~0.64) 샘플을 따로 모아야 한다.
+        """
+        self.assertEqual(build_templates.crop_label("Camille"), "Camille")
+        self.assertEqual(build_templates.crop_label("Camille@bench"), "Camille")
+        self.assertEqual(build_templates.crop_label("Camille@2"), "Camille")
+        self.assertEqual(build_templates.crop_label("Kog'Maw@bench2"), "Kog'Maw")
+
+    def test_two_samples_of_one_champion_share_the_label(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            screen.save_bmp(pattern(seed=1), str(folder / "Camille.bmp"))
+            screen.save_bmp(pattern(seed=2), str(folder / "Camille@bench.bmp"))
+            templates, failures = self.build(folder)
+        self.assertEqual([t.name for t in templates], ["Camille", "Camille"])
+        self.assertEqual(failures, [])
+
     def test_labeled_crops_are_kept(self):
         with tempfile.TemporaryDirectory() as tmp:
             folder = Path(tmp)
