@@ -8,9 +8,15 @@
 
 사용 예
 -------
-  py -3 scripts/check_capture.py --out shot.bmp
-  py -3 scripts/check_capture.py --window "League of Legends (TM) Client" --out lol.bmp
-  py -3 scripts/check_capture.py --in shot.bmp --templates data/templates_set18.json
+  py -3 scripts/check_capture.py --out shot.bmp                 # 전체 화면 캡처 + 저장
+  py -3 scripts/check_capture.py --window "Teamfight Tactics" --out shot.bmp
+  py -3 scripts/check_capture.py --region 0,0,1920,1080 --out shot.bmp
+  py -3 scripts/check_capture.py --in shot.bmp --shop           # 저장본으로 상점 5칸 인식 시험
+  py -3 scripts/check_capture.py --in shot.bmp --layout data/layout_1920x1080.json --shop
+  py -3 scripts/check_capture.py --in shot.bmp --no-templates   # 인식 없이 캡처 상태만
+
+기본적으로 data/templates_set18.json 으로 벤치+상점 인식을 시험하고, 칸별 픽셀 좌표를 함께
+출력한다 -> 그 좌표가 아이콘과 어긋나면 --layout JSON(비율 0~1)으로 보정한다.
 """
 
 from __future__ import annotations
@@ -32,8 +38,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--in", dest="source", default=None, help="BMP 파일을 입력으로 사용")
     parser.add_argument("--window", default=None, help="창 제목(주면 그 창 영역만)")
     parser.add_argument("--region", default=None, help="영역 캡처 'x,y,w,h'")
-    parser.add_argument("--templates", default=None, help="템플릿 JSON(있으면 유닛 인식 시험)")
+    parser.add_argument(
+        "--templates",
+        default=str(ROOT / "data" / "templates_set18.json"),
+        help="템플릿 JSON(있으면 유닛 인식 시험). 기본: data/templates_set18.json",
+    )
+    parser.add_argument(
+        "--no-templates", action="store_true", help="템플릿 인식 시험을 건너뛴다"
+    )
     parser.add_argument("--shop", action="store_true", help="상점 5칸만 인식")
+    parser.add_argument(
+        "--layout", default=None, help="좌표 오버라이드 JSON(기본: data/layout_1920x1080.json)"
+    )
     args = parser.parse_args(argv)
 
     if args.source:
@@ -63,23 +79,36 @@ def main(argv: list[str] | None = None) -> int:
         screen.save_bmp(image, args.out)
         print(f"  저장: {args.out} (BMP - 뷰어로 열어 좌표를 확인하세요)")
 
-    if args.templates:
-        template_set = fingerprint.TemplateSet.load(args.templates)
-        print(f"[템플릿] {args.templates}: {len(template_set.templates)}개 (그리드 {template_set.grid})")
-        regions = (
-            layout.SHOP_SLOTS if args.shop else layout.BENCH_SLOTS + layout.SHOP_SLOTS
-        )
-        print(f"{'영역':>10}{'인식':>16}{'점수':>8}{'마진':>8}  판정")
-        for name, box in regions:
-            region = image.crop(*box)
-            match = fingerprint.classify(region, template_set)
-            flag = "확인 필요" if match.needs_review else "확정"
+    if args.templates and not args.no_templates:
+        template_path = Path(args.templates)
+        if not template_path.exists():
+            print(f"[알림] 템플릿 파일이 없어 인식 시험을 건너뜁니다: {template_path}")
+        else:
+            template_set = fingerprint.TemplateSet.load(template_path)
+            overrides = layout.load_overrides(args.layout)
             print(
-                f"{name:>10}{match.name:>16}{match.score:>8.2f}{match.margin:>8.2f}  {flag}"
+                f"[템플릿] {template_path}: {len(template_set.templates)}개 "
+                f"(그리드 {template_set.grid}, 출처: {template_set.source})"
             )
+            regions = (
+                layout.resolve("shop", overrides)
+                if args.shop
+                else layout.resolve("bench", overrides) + layout.resolve("shop", overrides)
+            )
+            print(f"{'영역':>10}{'인식':>16}{'점수':>8}{'마진':>8}  픽셀(x,y,w,h)  판정")
+            for name, box in regions:
+                x, y, width, height = layout.to_pixels(box, image.width, image.height)
+                region = image.crop(x, y, width, height)
+                match = fingerprint.classify(region, template_set)
+                flag = "확인 필요" if match.needs_review else "확정"
+                print(
+                    f"{name:>10}{match.name:>16}{match.score:>8.2f}{match.margin:>8.2f}"
+                    f"  {x:>4},{y:>4},{width:>4},{height:>3}  {flag}"
+                )
     print(
-        "\n※ 좌표가 어긋나면 tftcalc/cv/layout.py 의 비율값을 조정하세요 "
-        "(1920x1080 기준으로 정의되어 있고, 다른 해상도는 비율로 환산됩니다)."
+        "\n※ 위 픽셀 좌표가 실제 아이콘과 어긋나면: --layout data/layout_1920x1080.json (비율 0~1) "
+        "또는 tftcalc/cv/layout.py 의 비율값을 조정하세요.\n"
+        "  (좌표는 비율이라 해상도가 달라도 그대로 환산됩니다)"
     )
     return 0
 
