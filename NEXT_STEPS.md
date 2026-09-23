@@ -1,7 +1,7 @@
 # 작업 이어하기 가이드 (집에서 이어서)
 
 > 이 문서는 **다른 PC에서 바로 이어서 작업**하기 위한 런북입니다.
-> 현재 상태: 커밋 `1b7f362` (main), 테스트 198개 전부 통과, CLI 13개 명령, 외부 의존성 0개.
+> 현재 상태: 커밋 `ce27dd5` (main), 테스트 254개 전부 통과, CLI 13개 명령, 외부 의존성 0개.
 
 ---
 
@@ -15,9 +15,9 @@ python -m tftcalc.cli selftest  # 환경/데이터 자기점검
 
 **설치할 것이 없습니다.** Python 3.12+ 표준 라이브러리만 씁니다(ctypes 포함). `requirements.txt`를 만들지 마세요 — 무의존성이 이 프로젝트의 장점입니다.
 
-전체 테스트(12개 파일, 198개):
+전체 테스트(13개 파일, 254개):
 ```powershell
-python -m unittest discover -s tests -t .      # 가장 간단(198 tests, OK)
+python -m unittest discover -s tests -t .      # 가장 간단(254 tests, OK)
 ```
 `tests/__init__.py` 를 추가해 discover 가 동작합니다. 파일별로 돌리려면:
 
@@ -25,10 +25,11 @@ python -m unittest discover -s tests -t .      # 가장 간단(198 tests, OK)
 (python tests\test_pool_math.py & python tests\test_comp.py & python tests\test_items.py & `
  python tests\test_economy.py & python tests\test_survival.py & python tests\test_report.py & `
  python tests\test_cv.py & python tests\test_scan.py & python tests\test_cli.py & `
- python tests\test_render.py & python tests\test_rules.py & python tests\test_trials_defaults.py) `
+ python tests\test_render.py & python tests\test_rules.py & python tests\test_trials_defaults.py & `
+ python tests\test_ocr.py) `
  2>&1 | Select-String 'Ran |^OK|FAILED'
 ```
-기대 출력: `Ran 31/18/15/26/16/6/27/11/20/16/8/4 tests` + 각각 `OK` (= 198개).
+기대 출력: `Ran 39/18/15/26/16/6/27/26/32/20/8/4/17 tests` + 각각 `OK` (= 254개).
 
 > **함정 1**: 실행기는 PC마다 다르다 — `python` 이 Microsoft Store 스텁이면 `py -3`,
 > `py` 런처가 없으면 `python`. 아래 예시는 **`python` 기준**이다.
@@ -83,6 +84,9 @@ python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3
 ```
 * `--scan` 에는 **`--templates` 가 필수**입니다(없으면 오류 메시지로 안내합니다).
 * `--snapshot` 은 상대(로비) 정보용입니다. **파일이 없어도 오류 없이** 내 정보만으로 리포트가 나옵니다.
+* **스캔은 상점 칸을 `shop` 으로 분리합니다**(보유로 세지 않음). 상점에 보이는 기물은 아직 사지 않은
+  것이라, 보유로 세면 판정이 낙관 편향됩니다. 지금 산다고 가정하려면 `--shop-as-owned` 를 붙이세요
+  (붙이면 보유로 세고 `[가정]` 이 출력됩니다).
 * `--scan-in` 을 빼면 실제 화면을 캡처합니다(게임이 떠 있어야 함).
 
 
@@ -103,42 +107,38 @@ python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3
 
 ---
 
-## 2. 남은 작업 B — 성급(별) · 숫자 인식 (다음 구현 과제)
+## 2. 남은 작업 B — 성급(별) · 숫자 인식 (✅ 골격 구현 완료)
 
-### 왜 이게 다음인가
-지금 CV는 **아이콘만** 읽습니다. 그래서
-* 성급(1/2/3성)을 못 읽어 무조건 1로 기록 → **3성이 1성 9개로 계산되면 골드 계획이 틀립니다**(치명적).
-* 골드/레벨/HP를 손으로 넣어야 해서 실전에서 손이 바빠집니다.
+### 구현한 것
+| 파일 | 내용 |
+|---|---|
+| `tftcalc/cv/ocr.py` (신규) | `star_ratio`/`stars_from_ratio`/`count_stars` — 별 개수를 **밝은 픽셀 면적 비율**로 센다(분류 아님). `star_is_ambiguous` 로 **경계·과대 비율을 걸러낸다**. `split_digits`(열 방향 투영) + `read_number`(자릿수별 지문 분류, **하나라도 애매하면 `None`**) |
+| `tftcalc/cv/layout.py` | `STAR_BAND`(칸 안 상대 비율) + `star_band(slot_box)` — 해상도 무관 |
+| `tftcalc/cv/scan.py` | `ScanReport.info`(`gold`/`level`/`my_hp`/`stage_round`), 성급 우선순위(**지정 > 인식 > 기본값**), 미인식 고지 |
+| `tftcalc/cli.py` | `--star-ocr`(켜기), `--digits`(숫자 지문 JSON) — `scan`/`report` 공통 |
+| `tests/test_ocr.py` (신규) | 합성 이미지 검증: 별 0~3 · 경계 거부 · 자릿수 분리 · 숫자(7/42/105) · 미인식 `None` |
 
-### 설계 (기존 8x8 지문 재사용, 새 의존성 0)
-| 대상 | 방법 | 이유 |
-|---|---|---|
-| 성급(별) | **개수 카운트** (분류 아님) | 별은 아이콘 위/아래에 1~3개가 같은 모양으로 찍힌다. 위치를 고정하고 "별 픽셀 밝기 합" 임계값으로 0/1/2/3을 센다. |
-| 숫자(골드/레벨/HP) | 8x8 지문 템플릿 10개(0~9) | 기존 `fingerprint`/`classify` 그대로. 단 **연속 숫자 분할**(가로 투영으로 자릿수 분리) 필요. |
+### ⚠️ 발견한 것 — 별 인식은 **기본 꺼짐**으로 바꿨다 (계획은 "기본 켜기"였음)
+**실측**: 실제 Data Dragon 아이콘을 칸에 채운 합성 화면에서 별 영역의 밝은 비율이 **별 1개 면적의 약 12배**로 나왔다. 아이콘 자체의 밝은 픽셀이 별 영역에 섞이기 때문이다. 그 값을 그대로 쓰면 **3성(풀 소모 9장)** 으로 잡혀 계산이 조용히 **3배** 틀어진다.
 
-**구현 지점(파일/함수)**
-1. `tftcalc/cv/ocr.py` (신규)
-   * `count_stars(image, box) -> int` — 별 개수(0~3). 임계값은 상수로 두고 근거 주석.
-   * `split_digits(image) -> list[Image]` — 흑백 마스크에서 열 방향 투영으로 자릿수 분리.
-   * `read_number(image, templates) -> int | None` — 자릿수별 분류 후 결합. **애매하면 `None`(=unknown)**.
-2. `tftcalc/cv/scan.py`
-   * `ScanReport`에 `info: dict[str, int | None]` 필드 추가(`gold`/`level`/`my_hp`/`stage_round`).
-   * `scan()`에서 `layout.INFO_REGIONS`도 함께 읽고, 하나라도 `None`이면 "손 입력 필요" 경고.
-   * `star` 우선순위: **`--star` 사용자 지정 > 별 인식 > 1(기본)**.
-3. `tftcalc/cv/layout.py` — `INFO_REGIONS`에 `star`용 박스 추가.
-   별은 칸마다 위치가 같으므로 슬롯 박스에 대한 **상대 비율**(예: 칸 높이의 0.78~1.0)로 정의해 해상도 무관하게.
-4. `tftcalc/cli.py` — `scan`/`report`에 `--no-star-ocr`(끄기)만 추가. 기본은 켜되 불확실하면 자동으로 "확인 필요".
-5. `tests/test_ocr.py` (신규) — **합성 이미지**로 검증(외부 파일 불필요):
-   * 별: 배경에 흰 별 0/1/2/3개를 그려 개수 정확히 반환.
-   * 숫자: 0~9 지문 템플릿으로 숫자 인식, 여러 자릿수(7, 42, 105).
-   * 미인식: 빈 칸 → `None`(0으로 **추정하지 않음**).
+그래서:
+* 기본은 `detect_stars=False` → 기존대로 **1성 + 고지**(안전 기본값).
+* `--star-ocr` 로 켜되, **애매하거나 과대 비율이면 그 칸을 스냅샷에서 빼고 `[확인 필요]`** 로 보고한다(추정 금지).
+* 켜서 제대로 쓰려면 `ocr.STAR_BRIGHTNESS` / `ocr.STAR_AREA_RATIO` / `layout.STAR_BAND` 를 실게임 화면에 맞춰야 한다.
+
+숫자도 마찬가지로 **`--digits` 가 없으면 아무것도 읽지 않고 전부 `None` + '손 입력 필요'** 다(0으로 추정하지 않음). `stage_round`('4-2')는 구분자 처리 미구현이라 읽지 않는다.
+
+### 남은 것
+* 실게임 별 영역 캘리브레이션(`check_capture.py --out shot.bmp` 로 별 위치/밝기 확인).
+* `data/digits_1920x1080.json` — 실게임 숫자를 크롭해 0~9 지문 생성(개인 캘리브레이션, `.gitignore`).
+* `stage_round` 구분자 파싱.
 
 **통과 기준(게이트)**
 1. 내 보드 성급 인식이 **수동 대조와 100% 일치**(20판 표본). 틀린 칸은 조용히 넘기지 말고 "확인 필요"로.
 2. 골드/레벨/HP 숫자 오인식 **0건**(한 자리라도 틀리면 골드 계획이 통째로 틀어짐). 실패 시 그냥 `None`.
-3. 기존 198개 테스트 + 신규 OCR 테스트 전부 통과.
+3. 기존 254개 테스트 전부 통과.
 
-> 원칙 유지: 숫자를 못 읽으면 **0이나 추정값을 넣지 말고 `None` + 경고**. "모르면 모른다고 말한다"가 이 프로젝트의 핵심 자산입니다.
+> 원칙 유지: 숫자/성급을 못 읽으면 **0이나 추정값을 넣지 말고 `None` + 경고**. "모르면 모른다고 말한다"가 이 프로젝트의 핵심 자산입니다.
 
 ---
 
@@ -146,7 +146,8 @@ python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3
 
 | 항목 | 내용 | 참고 |
 |---|---|---|
-| 상점 확률표 | `data/set18_shop_odds.json`에 인게임 확률 옮겨 적기(지금은 `_assumed`) | README §6 W2 |
+| 별/숫자 캘리브레이션 | 실게임에서 `layout.STAR_BAND`·`ocr` 임계값 맞추고, 숫자 크롭으로 `data/digits_1920x1080.json` 생성 | NEXT_STEPS §2 |
+| 상점 확률표 | `data/set18_shop_odds.json` 스켈레톤의 **null 52칸**을 인게임 값으로 채우기. 격자·검증·자동 로드는 완료 — **값만 입력하면 된다** | `python -m tftcalc.cli odds` 에서 `미채움 0` / README §6 W2 |
 | 승률 캘리브레이션 | `--win-rate`를 실측으로 교체 → 교환비율(1%p당 골드) 산출 | README §6 W3 |
 | Overwolf GEP 스파이크 | `opponent_board_pieces`가 8명인지 1명인지 30분 확인 | README §6 W5 |
 | 세트 교체 대비 | 아이콘/카탈로그 **자동 수집 파이프라인**(CommunityDragon) | README §7 — 지속가능성의 전제조건 |
@@ -156,7 +157,7 @@ python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3
 
 ## 4. 작업 규칙 (지키면 되돌리기 쉬움)
 
-1. **커밋 전**: 해당 테스트 파일 실행 → 전체 198개 `OK` 확인. 깨진 채로 커밋하지 않습니다.
+1. **커밋 전**: 해당 테스트 파일 실행 → 전체 254개 `OK` 확인. 깨진 채로 커밋하지 않습니다.
 2. **미지 데이터 추정 금지**: 모르면 `UnknownOddsError` / `InvalidOddsError` / `UnknownRecipeError`
    / `UnknownLevelError` / `UnknownIncomeError` / `unknown` / `None`.
 3. **4축 분리 유지**: 유닛(풀) · 아이템(부품) · 골드(시간) · 체력(생존)을 하나의 점수로 합치지 않습니다(차원 오류).
@@ -177,10 +178,10 @@ python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3
 
 | 항목 | 값 |
 |---|---|
-| 최신 커밋 | `1b7f362` (main) — `e3a9651` 에서 캘리브레이션 도구 크래시(`check_capture.py`) 수정 |
-| 테스트 | **198개 전부 통과** — pool 31 / comp 18 / items 15 / economy 26 / survival 16 / report 6 / cv 27 / scan 11 / cli 20 / render 16 / rules 8 / trials_defaults 4 |
+| 최신 커밋 | `ce27dd5` (main) — 코드 리뷰 지적사항 전체 수정(버그 8 + 저우선순위 10) |
+| 테스트 | **254개 전부 통과** — pool 39 / comp 18 / items 15 / economy 26 / survival 16 / report 6 / cv 27 / scan 26 / cli 32 / render 20 / rules 8 / trials_defaults 4 / ocr 17 |
 | CLI 명령 | **13개** — `odds selftest unit lobby outlook items plan survive report scan comp sensitivity robustness` |
-| 모듈 | `pool_math` `comp` `items` `economy` `survival` `lobby` `odds` `decision` `set_data` `trials` `render` `rules` `cli` + `cv/{screen,fingerprint,layout,scan}` |
+| 모듈 | `pool_math` `comp` `items` `economy` `survival` `lobby` `odds` `decision` `set_data` `trials` `render` `rules` `cli` + `cv/{screen,fingerprint,layout,scan,ocr}` |
 | 스크립트 | `build_templates` `check_capture` `crop_slots` `fetch_unit_costs` `fetch_item_recipes` `simulate_scan` |
 | 데이터 | 메타 덱 6 · 유닛 코스트 36 · 아이템 조합식 31 · 아이콘 지문 28 |
 | 의존성 | **0개** (Python 3.12+ 표준 라이브러리) |

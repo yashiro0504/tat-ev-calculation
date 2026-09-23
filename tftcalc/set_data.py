@@ -99,6 +99,12 @@ GOLD_PER_XP = 1.0
 #: 라운드당 무료(패시브) XP. 실제 비용은 이만큼 줄어든다(보수적 계산에서는 0으로 둔다).
 PASSIVE_XP_PER_ROUND = 2
 
+#: 상점 확률표의 격자 범위(레벨 x 코스트).
+#: ``data/set18_shop_odds.json`` 스켈레톤이 선언하는 셀과 정확히 같아야 하며,
+#: 테스트가 두 범위를 대조한다(스켈레톤에서 빠진 레벨/코스트가 조용히 생기지 않게).
+SHOP_ODDS_LEVELS: tuple[int, ...] = tuple(range(1, MAX_LEVEL + 1))
+SHOP_ODDS_COSTS: tuple[int, ...] = tuple(sorted(TIER_POOLS))
+
 
 def level_up_gold(current_level: int, target_level: int, *, count_passive_xp: bool = False,
                   rounds: int = 0) -> int:

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import io
 import sys
+import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -243,6 +244,142 @@ class TestTableAlignment(unittest.TestCase):
         for row in rows:
             with self.subTest(row=row.strip()[:16]):
                 self.assertEqual(render.disp_len(row), render.disp_len(header))
+
+
+class TestOddsSkeletonWorkflow(unittest.TestCase):
+    """실전 확률표(data/set18_shop_odds.json)가 자동 로드되고 채움 격자가 보이는지(A 준비)."""
+
+    def test_odds_auto_loads_real_file_and_shows_progress_grid(self):
+        code, out = run("odds")
+        self.assertEqual(code, 0)
+        self.assertIn("상점 확률 소스", out)
+        self.assertIn("set18_shop_odds.json", out)  # 자동 로드 증명
+        self.assertIn("확률표 채움", out)           # 진행률
+        self.assertIn("미채움", out)
+        self.assertIn("1코", out)                   # 격자 헤더
+        for cost in ("1코", "2코", "3코", "4코", "5코"):
+            self.assertIn(cost, out)
+
+    def test_grid_shows_anchor_value_and_unfilled_marker(self):
+        code, out = run("odds")
+        self.assertEqual(code, 0)
+        self.assertIn("30.0%", out)  # 검증 앵커(8레벨 4코)는 값이 보인다
+        self.assertIn("?", out)      # 나머지는 미채움 표시
+
+    def test_odds_file_flag_ranks_above_real_file(self):
+        """--odds-file 이 실전 파일보다 우선한다(체인에 둘 다 보인다)."""
+        code, out = run("odds", "--odds-file", ODDS)
+        self.assertEqual(code, 0)
+        self.assertIn("set18_shop_odds_assumed.json", out)
+        self.assertIn("set18_shop_odds.json", out)
+
+    def test_commands_survive_auto_loaded_skeleton(self):
+        """스켈레톤(전부 null)이 자동 로드돼도 명령이 죽지 않고 정직하게 멈춘다."""
+        code, out = run(
+            "comp", "--snapshot", SNAPSHOT, "--comps", COMPS,
+            "--level", "8", "--budget", "60", "--trials", "100",
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("데이터 부족", out)
+
+
+class TestShopAsOwnedFlag(unittest.TestCase):
+    """``--shop-as-owned`` 가 두 명령(scan/report)에서 받아들여지는지."""
+    def test_scan_parser_accepts_flag(self):
+        parser = cli.build_parser()
+        namespace = parser.parse_args(
+            [
+                "scan", "--templates", "t.json", "--in", "s.bmp",
+                "--out", "o.json", "--shop-as-owned",
+            ]
+        )
+        self.assertTrue(namespace.shop_as_owned)
+
+    def test_flag_is_false_by_default(self):
+        parser = cli.build_parser()
+        namespace = parser.parse_args(
+            ["scan", "--templates", "t.json", "--in", "s.bmp", "--out", "o.json"]
+        )
+        self.assertFalse(namespace.shop_as_owned)
+
+    def test_report_parser_accepts_flag(self):
+        parser = cli.build_parser()
+        namespace = parser.parse_args(
+            [
+                "report", "--round", "4-1", "--gold", "60", "--level", "7",
+                "--hp", "40", "--shop-as-owned",
+            ]
+        )
+        self.assertTrue(namespace.shop_as_owned)
+
+
+class TestStarOcrFlags(unittest.TestCase):
+    """``--star-ocr`` / ``--digits`` 가 두 명령에서 받아들여지는지."""
+
+    def test_scan_defaults_are_star_ocr_off_and_no_digits(self):
+        parser = cli.build_parser()
+        namespace = parser.parse_args(
+            ["scan", "--templates", "t.json", "--in", "s.bmp", "--out", "o.json"]
+        )
+        self.assertFalse(namespace.star_ocr)   # 기본은 꺼짐(캘리브레이션 전 안전 기본값)
+        self.assertIsNone(namespace.digits)    # 기본 경로는 코드가 정한다
+
+    def test_scan_accepts_flags(self):
+        parser = cli.build_parser()
+        namespace = parser.parse_args(
+            [
+                "scan", "--templates", "t.json", "--in", "s.bmp", "--out", "o.json",
+                "--star-ocr", "--digits", "digits.json",
+            ]
+        )
+        self.assertTrue(namespace.star_ocr)
+        self.assertEqual(namespace.digits, "digits.json")
+
+    def test_report_accepts_flags(self):
+        parser = cli.build_parser()
+        namespace = parser.parse_args(
+            [
+                "report", "--round", "4-1", "--gold", "60", "--level", "7",
+                "--hp", "40", "--star-ocr", "--digits", "d.json",
+            ]
+        )
+        self.assertTrue(namespace.star_ocr)
+        self.assertEqual(namespace.digits, "d.json")
+
+    def test_missing_digits_file_is_ignored(self):
+        """숫자 템플릿 파일이 없으면 None 을 돌려준다(숫자는 '손 입력 필요'로 고지)."""
+        parser = cli.build_parser()
+        namespace = parser.parse_args(
+            [
+                "scan", "--templates", "t.json", "--in", "s.bmp", "--out", "o.json",
+                "--digits", "does-not-exist.json",
+            ]
+        )
+        self.assertIsNone(cli._load_digit_templates(namespace))
+
+    def test_digits_file_is_loaded_when_present(self):
+        from tftcalc.cv import fingerprint, screen as screen_module
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "digits.json"
+            blank = screen_module.Image(
+                width=8, height=8, pixels=bytearray(8 * 8 * 4)
+            )
+            fingerprint.TemplateSet(
+                grid=8,
+                source="테스트",
+                templates=[fingerprint.Template(name="0", values=fingerprint.fingerprint(blank))],
+            ).save(path)
+            parser = cli.build_parser()
+            namespace = parser.parse_args(
+                [
+                    "scan", "--templates", "t.json", "--in", "s.bmp", "--out", "o.json",
+                    "--digits", str(path),
+                ]
+            )
+            loaded = cli._load_digit_templates(namespace)
+        self.assertIsNotNone(loaded)
+        self.assertEqual(loaded.names(), ["0"])
 
 
 if __name__ == "__main__":

@@ -194,10 +194,10 @@ tft-ev-calculator/
 │  ├─ trials.py                  몬테카를로 시행 수 기본값 한곳(FAST/REPEATED/STANDARD/HEAVY)
 │  ├─ render.py                  표 출력/형식: 확률·골드 표기 정직성, 한글 폭 패딩/자르기
 │  ├─ rules.py                   규칙 기반 권장 동선 + 근거(순수 함수, 단독 테스트 가능)
-│  ├─ cv/                        화면 인식: screen(캡처/BMP)·fingerprint(지문)·layout(좌표)·scan(스냅샷)
+│  ├─ cv/                        화면 인식: screen(캡처/BMP)·fingerprint(지문)·layout(좌표)·scan(스냅샷)·ocr(별/숫자)
 │  └─ cli.py                     명령 13개 — build_parser() + 각 cmd_* 핸들러
 ├─ data/
-│  ├─ set18_shop_odds.json          사람이 채우는 확률표(비어 있음 = 정직하게 비어 있음)
+│  ├─ set18_shop_odds.json          사람이 채우는 실전 확률표(격자 스켈레톤 + null=미채움, 있으면 자동 로드)
 │  ├─ set18_shop_odds_assumed.json  데모용 가정값(검증 안 됨, 출력에 소스로 표시)
 │  ├─ set18_unit_costs.json         유닛 코스트/특성 (tft.ninja 파싱, 스크립트 생성)
 │  ├─ set18_item_recipes.json       아이템 조합식 31개 (tft.ninja 파싱, 스크립트 생성)
@@ -212,18 +212,19 @@ tft-ev-calculator/
 │  ├─ crop_slots.py                 벤치/상점 칸 크롭 저장(라벨링용)
 │  └─ simulate_scan.py              실제 아이콘으로 가짜 스크린샷 생성(스캔 검증용)
 └─ tests/                       (`__init__.py` 포함 — `python -m unittest discover` 동작)
-   ├─ test_pool_math.py          31개: 공개 벤치마크 재현 + 오차 처리 + 확률표 검증 + 예산 탐색 동치
+   ├─ test_pool_math.py          39개: 공개 벤치마크 재현 + 오차 처리 + 확률표 검증(null/키/합계) + 예산 탐색 동치
    ├─ test_comp.py               18개: 덱 엔진 불변식 + 레벨/레벨업 정산 + 분해 표 커버리지
    ├─ test_items.py              15개: 조합식 정확성 + 부품 수급 확률/우선순위 + 필드 선언
    ├─ test_economy.py            26개: 수입 규칙, 라운드 구조(스테이지 1=4), 레벨업 지출, 전망 길이
    ├─ test_survival.py           16개: 피해 공식(문서 예시 대조), 생존 시뮬, 전략 비교(교환비율)
    ├─ test_report.py              6개: 통합 리포트 섹션 출력/생략/규칙 판정
    ├─ test_cv.py                 27개: 캡처/BMP, 지문 분류, 마진 정책, 좌표 검증, 문턱 상수
-   ├─ test_scan.py               11개: 스캔→스냅샷(코스트/성급/미확인), 상대 보존, CLI 배선
-   ├─ test_cli.py                20개: 명령 스모크 + 입력 오류 안내 + 표 정렬(한글 폭)
-   ├─ test_render.py             16개: 확률/골드 표기 정직성, 한글 폭 패딩/자르기
+   ├─ test_scan.py               26개: 스캔→스냅샷(영역 분리/코스트), 상점≠보유, 성급 인식 파이프라인
+   ├─ test_cli.py                32개: 명령 스모크 + 입력 오류 안내 + 표 정렬 + 확률표·상점·성급 플래그
+   ├─ test_render.py             20개: 확률/골드 표기 정직성, 한글 폭 패딩/자르기, 확률표 격자
    ├─ test_rules.py               8개: 규칙 기반 권장 동선 5분기 + 근거 목록
-   └─ test_trials_defaults.py     4개: 시행 수 기본값이 trials.py 상수에서 오는지
+   ├─ test_trials_defaults.py     4개: 시행 수 기본값이 trials.py 상수에서 오는지
+   └─ test_ocr.py                17개: 별 0~3·경계 거부, 자릿수 분리, 숫자 읽기/미인식 None
 ```
 
 ### 실행 방법 (Windows)
@@ -235,7 +236,7 @@ python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 38 --streak -3
     --odds-file data/set18_shop_odds_assumed.json ^
     --components rod:2,gloves,tear --future-components 6   # ★ 실전은 이 한 줄
 python -m tftcalc.cli selftest                    # 엔진 검증(공개 수치 재현)
-python -m tftcalc.cli odds                        # 아는 확률 셀만 보기
+python -m tftcalc.cli odds                        # 확률표 채움 진행 격자(값 / 미채움 ?)
 python -m tftcalc.cli outlook --snapshot data/example_snapshot.json --level 8 --budget 100 ^
     --odds-file data/set18_shop_odds_assumed.json   # 기물별 2성/3성 확률
 python -m tftcalc.cli comp --snapshot data/example_snapshot.json --comps data/comps_set18.json ^
@@ -253,19 +254,20 @@ python -m tftcalc.cli survive --round 4-1 --hp 38 --win-rate 0.35 --enemy-surviv
     --target-round 4-5 --gold 60 --level 7 --streak -3 ^
     --roll-gold 40 --win-rate-roll 0.6
 python -m tftcalc.cli robustness --level 8 --cost 4 --own 1 --others 2 --tolerance 2 --budget 60
-python tests\test_pool_math.py                    # 31 tests, OK
+python tests\test_pool_math.py                    # 39 tests, OK
 python tests\test_comp.py                         # 18 tests, OK
 python tests\test_items.py                        # 15 tests, OK
 python tests\test_economy.py                      # 26 tests, OK
 python tests\test_survival.py                     # 16 tests, OK
 python tests\test_report.py                       #  6 tests, OK
 python tests\test_cv.py                           # 27 tests, OK  (실제 화면 캡처 포함)
-python tests\test_scan.py                         # 11 tests, OK  (스캔->스냅샷->리포트)
-python tests\test_cli.py                          # 20 tests, OK  (명령 스모크 + 오류 안내 + 표 정렬)
-python tests\test_render.py                       # 16 tests, OK  (표기 정직성/한글 폭)
+python tests\test_scan.py                         # 26 tests, OK  (스캔->스냅샷->리포트, 상점 분리)
+python tests\test_cli.py                          # 32 tests, OK  (명령 스모크 + 오류 안내 + 플래그)
+python tests\test_render.py                       # 20 tests, OK  (표기 정직성/한글 폭/확률표 격자)
 python tests\test_rules.py                        #  8 tests, OK  (규칙 기반 판정)
 python tests\test_trials_defaults.py              #  4 tests, OK  (시행 수 상수)
-python -m unittest discover -s tests -t .        # 위 전부 한 번에(198 tests, OK)
+python tests\test_ocr.py                          # 17 tests, OK  (별/숫자 OCR)
+python -m unittest discover -s tests -t .        # 위 전부 한 번에(254 tests, OK)
 python scripts\check_capture.py --out shot.bmp    # 캡처 확인 + 좌표 디버그
 python scripts\build_templates.py --from-comps data/comps_set18.json   # 아이콘 템플릿 생성
 python scripts\simulate_scan.py --units ahri,morgana,sett --out sim_shot.bmp  # 스캔 검증용 가짜 화면
@@ -712,8 +714,12 @@ python scripts/build_templates.py --from-crops data/crops
 1. **게임 화면에서의 정확도/좌표는 아직 검증하지 못했다.** 이 환경에 TFT 게임 화면이 없기 때문이다.
    좌표(`layout.py`)는 공개된 UI 배치를 바탕으로 넣은 **기본값**이고, `check_capture.py`로 저장한
    BMP를 보며 `data/layout_1920x1080.json`으로 보정하는 절차를 문서화해 두었다.
-2. **성급(1/2/3성)은 아이콘만으로 안 읽힌다.** 별 표시를 따로 인식해야 한다(다음 작업).
-3. **숫자(골드/레벨/HP) OCR은 아직 없다.** 숫자 전용 템플릿을 만들면 같은 방식으로 붙일 수 있다.
+2. **성급(1/2/3성) 별 인식은 골격을 구현했지만 기본 꺼짐이다.** 별 영역의 밝은 비율은 아이콘
+   자체와 섞이기 쉬워(실측: 별 1개 면적의 약 12배) 실게임 화면에 맞추기 전에는 1성을 2성으로
+   읽는 식의 **3배 오차**가 날 수 있다. `--star-ocr` 로 켜되, 안전하게는 `--star 'Ahri=2'` 로 지정한다.
+3. **숫자(골드/레벨/HP) OCR 골격은 있다**(`cv/ocr.py`: 자릿수 분리 + 지문 분류). 다만 `--digits` 로
+   0~9 지문 파일을 주지 않으면 읽지 않고 `None` + '손 입력 필요' 다(그 파일은 실게임 숫자 크롭으로
+   만들어야 한다). 라운드 표기('4-2')는 구분자 처리 미구현이라 읽지 않는다.
 4. **상대 보드/대기석은 읽지 않는다.** 이 도구는 내 화면만 본다(상대는 스카우팅/GEP 입력).
 5. 빈 칸은 `unknown`으로 남긴다(추정 금지). 마진이 작으면 자동 확정하지 않고 "확인 필요"로 표시한다.
 
@@ -736,8 +742,16 @@ python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3
     --odds-file data/set18_shop_odds_assumed.json ^
     --components rod:2,gloves,tear --future-components 6
 ```
-* `--scan` 은 **내 보드/벤치만** 채운다. 상대는 `--snapshot`(기존 스냅샷)에서 **보존**된다(상대는 화면 스캔 영역이 아님).
+* `--scan` 은 **내 보드/벤치/상점**을 채운다. 상대는 `--snapshot`(기존 스냅샷)에서 **보존**된다(상대는 화면 스캔 영역이 아님).
+* **상점 칸은 '보유'로 세지 않는다.** 스냅샷에 `shop` 으로 따로 담기고 풀 계산(`board`/`bench`)에는 안 들어간다 —
+  상점에 보이는 기물은 아직 사지 않은 것이라, 보유로 세면 내 보유가 과대평가되고 남은 풀이 과소평가되어
+  판정이 **낙관 편향**된다. 지금 산다고 가정해 모델링하려면 `--shop-as-owned` 를 붙이고, 그러면 `[가정]` 이 출력된다.
 * `--scan-in <BMP>` 로 게임 없이도 스캔 경로를 시험할 수 있다.
+* **성급(별)은 기본적으로 읽지 않는다**(1성 + 고지). `--star-ocr` 로 켜면 별 개수를 세지만,
+  임계값을 실게임 화면에 맞추기 전에는 애매/과대 비율을 `[확인 필요]` 로 빼기만 하므로
+  안전하게는 `--star 'Ahri=2,Krug=3'` 로 지정한다.
+* **숫자(골드/레벨/HP)는 `--digits <0~9 지문 JSON>` 을 줄 때만 읽는다.** 없으면 전부 `None` +
+  '손 입력 필요'다(0 으로 추정하지 않음).
 
 **실제 아이콘으로 끝까지 검증한 결과** (게임 화면 대신 실제 Data Dragon 아이콘을 상점 좌표에 붙여 시험)
 ```
@@ -752,6 +766,9 @@ python -m tftcalc.cli scan --templates data/templates_set18.json --in sim_shot.b
   [확정] shop_3  Sett     4코 (유사도 95.7%)
   [확정] shop_4  Karma    1코 (유사도 95.5%)
   [확인 필요] shop_5  빈 칸/미등록
+  [영역] 보드 0칸 / 벤치 0칸 / 상점 4칸
+  [상점] Ahri, Morgana, Sett, Karma — 상점 칸은 '보유'가 아니므로 풀 계산에 넣지 않았습니다(사면
+  즉시 보유가 되니 그때 다시 스캔하거나 --shop-as-owned).
   ※ 성급은 1로 기록했습니다(아이콘으로는 못 읽음)
 ```
 → 실제 아이콘 인식 **유사도 95~97%**, 이름·**코스트까지 정확**(Karma 1코, 나머지 4코), 빈 칸은 자동 분리.
@@ -763,7 +780,9 @@ python -m tftcalc.cli scan --templates data/templates_set18.json --in sim_shot.b
 | 빈 칸 / 미등록 아이콘 | `unknown` → 스냅샷에 안 넣고 "확인 필요"로 보고 |
 | 두 챔피언이 비슷해 마진이 작음 | 자동 확정하지 않고 `runner_up`(2등 후보)와 함께 "확인 필요" |
 | 코스트를 모르는 유닛(TFT 전용) | 스냅샷 제외 + `missing_cost` 로 어느 유닛인지 알림 |
-| 성급(1/2/3성) | 아이콘으로 못 읽음 → 1로 기록하고 **명시적으로 경고**, `--star 'Ahri=2'` 로 지정 |
+| 성급(1/2/3성) | 별 개수를 세어 읽되 **기본 꺼짐**(아이콘 오염으로 3배 오차 위험). 켜면 애매/과대 비율은 확정하지 않고 `[확인 필요]` 로 뺀다. `--star 'Ahri=2'` 지정이 항상 우선 |
+| 숫자(골드/레벨/HP) | `--digits` 가 없거나 못 읽으면 `None` + '손 입력 필요'(0 으로 추정하지 않음) |
+| **상점 칸** | **'내 보유'가 아니다** → `shop` 키로 분리해 풀 계산에서 제외(상점에 보이는 건 아직 안 산 것). 지금 산다고 가정하려면 `--shop-as-owned` 로 **명시**하고 그 사실을 `[가정]` 으로 고지 |
 
 **남은 한계(게임에서 쓸 때 반드시 확인)**
 1. **좌표 캘리브레이션**: `layout.py` 기본값은 공개 UI 배치 기반 추정이다. `check_capture.py --out shot.bmp`로
@@ -777,12 +796,12 @@ python -m tftcalc.cli scan --templates data/templates_set18.json --in sim_shot.b
 ## 6. 다음 단계 (권장 순서 + 각 단계 게이트)
 
 > **다른 PC에서 이어서 작업할 때는 [`NEXT_STEPS.md`](NEXT_STEPS.md) 를 먼저 보세요.**
-> 클론 → 테스트 198개 확인 → 좌표 캘리브레이션 → 성급/숫자 인식 설계까지 실행 명령 단위로 정리돼 있습니다.
+> 클론 → 테스트 254개 확인 → 좌표 캘리브레이션 → 성급/숫자 인식 설계까지 실행 명령 단위로 정리돼 있습니다.
 
 | 주차 | 할 일 | 통과 기준(게이트) |
 |---|---|---|
 | W1 | **수동 스냅샷으로 실전 10판 기록** → 계산 vs 실제 결과 비교 | 예측 기대골드와 실제 소모 골드의 오차가 ±25% 이내 |
-| W2 | `data/set18_shop_odds.json` 에 **인게임 상점 확률**을 옮겨 적기(패치노트/인게임 표시) | `python -m tftcalc.cli odds` 에 1~10레벨이 다 뜨고, 그 값으로 전 레벨 계산 가능 |
+| W2 | `data/set18_shop_odds.json` 스켈레톤의 **null 52칸**을 인게임 상점 확률로 채우기(인게임 툴팁/패치노트) | `python -m tftcalc.cli odds` 에서 **미채움 0**(`?` 없이 값만) 이 되고, `--odds-file` 없이 전 레벨 계산 가능 |
 | W3 | **승률 캘리브레이션** — 매 게임 "라운드/골드/HP/승률"만 기록해 `--win-rate` 를 실측으로 교체 | 교환비율(1%p당 골드)이 개인 데이터로 산출됨 |
 | W4 | ~~CV 어댑터~~ → **✅ 1차 구현 완료**(5.11). 남은 것: **게임 화면에서 좌표·정확도 실측 + 성급(별) 인식 + 숫자 OCR** | 상점/벤치 인식 정확도 99% 이상(오인식은 골드를 잘못 세게 만든다) |
 | W5 | **Overwolf GEP 30분 스파이크**: `opponent_board_pieces` 가 8명인지 1명인지 확인 | (a)면 CV 대부분 폐기, (b)면 "관전 자동화 없음" 전제로 CV 유지 |

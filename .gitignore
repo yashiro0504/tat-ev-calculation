@@ -12,6 +12,7 @@ data/my_board.json
 data/sim_board*.json
 data/crops*/
 data/layout_1920x1080.json
+data/digits_1920x1080.json
 
 # 편집기/OS
 .vscode/

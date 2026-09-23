@@ -158,6 +158,75 @@ class TestOddsTable(unittest.TestCase):
         for level, total in rows.items():
             self.assertLessEqual(total, 1.0 + 1e-9, f"Lv{level} 합계 {total * 100:.1f}%")
 
+    # ---- 스켈레톤 채우기 지원(null = 미채움) -------------------------------
+    def test_null_cell_is_unknown_not_zero(self):
+        """null 은 '미채움'이다. 0% 로 추정하면 계산기가 조용히 틀린 값을 낸다."""
+        odds = self._odds_file({"odds": {"8": {"3": None, "4": 30}}})
+        self.assertNotIn((8, 3), odds.cells)
+        self.assertIn((8, 3), odds.declared)
+        self.assertEqual(odds.pending(), [(8, 3)])
+        with self.assertRaises(UnknownOddsError):
+            odds.cost_odds(8, 3)
+        self.assertAlmostEqual(odds.cost_odds(8, 4), 0.30)
+
+    def test_builtin_cells_are_not_counted_as_pending(self):
+        """builtin 으로 이미 아는 셀은 null 로 선언돼 있어도 '미채움'이 아니다."""
+        odds = self._odds_file({"odds": {"8": {"4": None}}})
+        self.assertIn((8, 4), odds.declared)  # 파일이 선언은 했다
+        self.assertEqual(odds.pending(), [])  # 값은 builtin 으로 안다
+        self.assertTrue(odds.knows(8, 4))
+
+    def test_pending_lists_only_unknown_declared_cells(self):
+        odds = self._odds_file(
+            {"odds": {"7": {"3": None, "4": 20}, "8": {"4": None, "5": None}}}
+        )
+        self.assertEqual(odds.pending(), [(7, 3), (8, 5)])
+
+    def test_json_rejects_out_of_range_level(self):
+        with self.assertRaises(InvalidOddsError):
+            self._odds_file({"odds": {"12": {"4": 30}}})
+
+    def test_json_rejects_out_of_range_cost(self):
+        with self.assertRaises(InvalidOddsError):
+            self._odds_file({"odds": {"8": {"6": 30}}})
+
+    def test_source_chain_is_preserved(self):
+        """base.source 를 이어붙여 어느 파일들이 겹쳐졌는지 알 수 있어야 한다."""
+        odds = self._odds_file({"odds": {"7": {"3": 35}}})
+        self.assertIn("builtin", odds.source)
+        self.assertIn("odds.json", odds.source)
+
+    def test_shipped_skeleton_covers_the_full_grid(self):
+        """실전 스켈레톤이 격자 전체를 선언하는지(빠진 레벨/코스트가 조용히 생기지 않게).
+
+        값이 전부 비어 있어도(null) 된다 — 그게 스켈레톤의 목적이다.
+        """
+        path = ROOT / "data" / "set18_shop_odds.json"
+        if not path.exists():
+            self.skipTest("set18_shop_odds.json 없음")
+        odds = ShopOdds.from_json(path)
+        expected = {
+            (level, cost)
+            for level in set_data.SHOP_ODDS_LEVELS
+            for cost in set_data.SHOP_ODDS_COSTS
+        }
+        self.assertEqual(odds.declared, expected)
+        self.assertEqual(
+            len(expected),
+            len(set_data.SHOP_ODDS_LEVELS) * len(set_data.SHOP_ODDS_COSTS),
+        )
+        # 검증된 앵커 3개는 스켈레톤이 미리 채워 둔다(사람이 덮어쓰지 않도록).
+        self.assertAlmostEqual(odds.cost_odds(8, 4), 0.30)
+        self.assertAlmostEqual(odds.cost_odds(10, 5), 0.25)
+        self.assertAlmostEqual(odds.cost_odds(11, 5), 0.35)
+        # 값이 있는 셀은 유효 범위, 레벨별 합계는 100% 이하(부분 표 허용).
+        for value in odds.cells.values():
+            self.assertGreaterEqual(value, 0.0)
+            self.assertLessEqual(value, 1.0)
+        for level in set_data.SHOP_ODDS_LEVELS:
+            total = sum(v for (lvl, _), v in odds.cells.items() if lvl == level)
+            self.assertLessEqual(total, 1.0 + 1e-9, f"Lv{level} 합계 {total}")
+
 
 class TestGoldNeededBinarySearch(unittest.TestCase):
     """골드 예산 탐색이 이진 탐색으로 바뀌어도 결과가 선형 스캔과 같은지(L2)."""
@@ -320,6 +389,30 @@ class TestLobbySnapshot(unittest.TestCase):
         }
         snapshot = lobby.LobbySnapshot.from_dict(raw)
         self.assertEqual(list(snapshot.copies_in_play()), ["Ahri"])
+
+    def test_shop_key_is_ignored_by_pool_math(self):
+        """상점 칸(scan 이 넣는 ``shop`` 키)은 '보유'가 아니므로 집계하지 않는다.
+
+        Regression 방지: 누군가 'shop 도 세면 좋겠다'며 추가하면 안 된다.
+        상점에 보이는 기물은 아직 사지 않은 것이고, 세면 낙관 편향이 된다.
+        """
+        raw = {
+            "players": [
+                {
+                    "name": "나",
+                    "is_me": True,
+                    "board": [{"champion": "Ahri", "cost": 4, "star": 1}],
+                    "bench": [{"champion": "Sett", "cost": 4, "star": 1}],
+                    "shop": [
+                        {"champion": "Ahri", "cost": 4, "star": 1},
+                        {"champion": "Morgana", "cost": 4, "star": 1},
+                    ],
+                }
+            ]
+        }
+        snapshot = lobby.LobbySnapshot.from_dict(raw)
+        self.assertEqual(sorted(snapshot.copies_in_play()), ["Ahri", "Sett"])
+        self.assertEqual(snapshot.my_copies("Morgana"), 0)
 
 
 class TestDecision(unittest.TestCase):

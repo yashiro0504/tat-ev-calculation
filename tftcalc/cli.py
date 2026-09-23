@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 from . import comp as comp_module
 from . import decision, economy, items, lobby, pool_math, render, rules, set_data, survival
@@ -22,7 +23,7 @@ from .trials import FAST, HEAVY, STANDARD
 from .cv import fingerprint
 from .cv import scan as scan_module
 from .cv import screen
-from .odds import ShopOdds, UnknownOddsError
+from .odds import DEFAULT_ODDS_FILE, ShopOdds, UnknownOddsError
 
 
 def _item_input_given(args: argparse.Namespace) -> bool:
@@ -35,7 +36,18 @@ def _item_input_given(args: argparse.Namespace) -> bool:
 
 
 def build_odds(args: argparse.Namespace) -> ShopOdds:
+    """상점 확률표를 만든다.
+
+    우선순위: ``builtin``(검증 셀)  <  ``data/set18_shop_odds.json``(실전, 있으면 자동)
+              <  ``--odds-file``(명시 지정이 항상 이김)
+
+    실전 파일을 자동으로 얹는 것은 다른 ``data/*.json``(코스트표·템플릿·컴프)과 같은 방식이다.
+    그래서 **파일만 채우면 모든 명령에 반영되고**, 채우기 전에는 null 셀이 모르는 채로 남아
+    그 셀을 쓰는 계산이 ``UnknownOddsError`` 로 멈춘다.
+    """
     odds = ShopOdds.builtin()
+    if DEFAULT_ODDS_FILE.exists():
+        odds = ShopOdds.from_json(DEFAULT_ODDS_FILE, base=odds)
     path = getattr(args, "odds_file", None)
     if path:
         odds = ShopOdds.from_json(path, base=odds)
@@ -86,7 +98,34 @@ def _print_unit_report(report: dict[str, object], confidence_note: str | None) -
 
 
 def cmd_odds(args: argparse.Namespace) -> int:
-    print(build_odds(args).describe())
+    """아는 상점 확률 셀 출력 + (실전 파일이 있으면) 채움 진행 격자."""
+    odds = build_odds(args)
+    if not odds.declared:
+        # 확률표 파일이 없으면 예전처럼 아는 셀만 나열한다.
+        print(odds.describe())
+        return 0
+
+    print(odds.describe_source())
+    pending = odds.pending()
+    print()
+    print(
+        f"=== 확률표 채움: {len(odds.declared) - len(pending)} / {len(odds.declared)} 셀 "
+        f"(미채움 {len(pending)}) ==="
+    )
+    for line in render.odds_grid(
+        levels=sorted({level for level, _ in odds.declared}),
+        costs=sorted({cost for _, cost in odds.declared}),
+        values=odds.cells,
+        declared=odds.declared,
+    ):
+        print(line)
+    if pending:
+        print(
+            f"  ('?' = 미채움 {len(pending)}개 — {DEFAULT_ODDS_FILE.name} 의 null 을 "
+            "인게임 값으로 채우세요.)"
+        )
+    else:
+        print("  (모든 셀이 채워졌습니다. --odds-file 없이 그대로 쓰입니다.)")
     return 0
 
 
@@ -1342,12 +1381,24 @@ def _load_or_capture(source: str | None) -> "screen.Image | None":
     return screen.capture()
 
 
+def _load_digit_templates(args: argparse.Namespace) -> "fingerprint.TemplateSet | None":
+    """숫자 0~9 지문 템플릿을 로드한다. 없으면 ``None``(숫자는 '손 입력 필요'로 고지)."""
+    path = getattr(args, "digits", None) or scan_module.DEFAULT_DIGITS
+    target = Path(path)
+    if not target.exists():
+        return None
+    return fingerprint.TemplateSet.load(target)
+
+
 def _run_scan(
     args: argparse.Namespace,
     *,
     area: str,
     star_spec: str | None,
     source: str | None,
+    shop_as_owned: bool = False,
+    detect_stars: bool = True,
+    digit_templates: "fingerprint.TemplateSet | None" = None,
 ) -> "scan_module.ScanReport | None":
     """공통 스캔 절차(템플릿/코스트 로드 -> 캡처 -> 인식)."""
     templates_path = getattr(args, "templates", None)
@@ -1372,12 +1423,23 @@ def _run_scan(
         cost_table,
         which=tuple(part.strip() for part in area.split(",") if part.strip()),
         star_overrides=_parse_star_spec(star_spec),
+        shop_as_owned=shop_as_owned,
+        detect_stars=detect_stars,
+        digit_templates=digit_templates,
     )
 
 
 def cmd_scan(args: argparse.Namespace) -> int:
     """화면을 스캔해 로비 스냅샷 파일을 만든다(CV -> 계산기 연결)."""
-    report = _run_scan(args, area=args.area, star_spec=args.star, source=args.source)
+    report = _run_scan(
+        args,
+        area=args.area,
+        star_spec=args.star,
+        source=args.source,
+        shop_as_owned=args.shop_as_owned,
+        detect_stars=bool(args.star_ocr),
+        digit_templates=_load_digit_templates(args),
+    )
     if report is None:
         return 2
     print("=== 화면 스캔 결과 ===")
@@ -1397,10 +1459,13 @@ def _scan_snapshot(args: argparse.Namespace) -> "lobby.LobbySnapshot | None":
         area=getattr(args, "scan_area", "bench,shop"),
         star_spec=getattr(args, "star", None),
         source=getattr(args, "scan_in", None),
+        shop_as_owned=getattr(args, "shop_as_owned", False),
+        detect_stars=bool(getattr(args, "star_ocr", False)),
+        digit_templates=_load_digit_templates(args),
     )
     if report is None:
         return None
-    print("\n=== 화면 스캔(내 보드/벤치) ===")
+    print("\n=== 화면 스캔(내 보드/벤치/상점) ===")
     for line in report.summary_lines():
         print(line)
     merged = scan_module.merge_with_opponents(report.snapshot, args.snapshot)
@@ -1573,6 +1638,21 @@ def build_parser() -> argparse.ArgumentParser:
     rep.add_argument("--scan-in", default=None, help="BMP 입력으로 스캔(게임 없이 테스트)")
     rep.add_argument("--scan-out", default=None, help="스캔 결과 스냅샷 저장 경로")
     rep.add_argument("--star", default=None, help="성급 지정 'Ahri=2,Krug=3'")
+    rep.add_argument(
+        "--shop-as-owned",
+        action="store_true",
+        help="상점 칸을 '지금 산다'고 가정해 보유로 센다(기본은 세지 않음 — 낙관 편향 방지)",
+    )
+    rep.add_argument(
+        "--star-ocr",
+        action="store_true",
+        help="별(성급) 자동 인식을 켠다(기본 꺼짐 — 임계값 캘리브레이션 전에는 3배 오차 위험)",
+    )
+    rep.add_argument(
+        "--digits",
+        default=None,
+        help="숫자 0~9 지문 JSON(기본 data/digits_1920x1080.json, 없으면 숫자는 손 입력)",
+    )
     rep.add_argument("--comps", default=None)
     rep.add_argument("--odds-file", default=None)
     rep.add_argument("--recipes", default=None)
@@ -1596,6 +1676,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--keep-opponents", default=None, help="기존 스냅샷(상대 항목 보존)"
     )
     scan_parser.add_argument("--star", default=None, help="성급 지정 'Ahri=2,Krug=3'")
+    scan_parser.add_argument(
+        "--shop-as-owned",
+        action="store_true",
+        help="상점 칸을 '지금 산다'고 가정해 보유로 센다(기본은 세지 않음 — 낙관 편향 방지)",
+    )
+    scan_parser.add_argument(
+        "--star-ocr",
+        action="store_true",
+        help="별(성급) 자동 인식을 켠다(기본 꺼짐 — 임계값 캘리브레이션 전에는 3배 오차 위험)",
+    )
+    scan_parser.add_argument(
+        "--digits",
+        default=None,
+        help="숫자 0~9 지문 JSON(기본 data/digits_1920x1080.json, 없으면 숫자는 손 입력)",
+    )
     scan_parser.add_argument("--name", default="나")
     scan_parser.set_defaults(func=cmd_scan)
 

@@ -138,3 +138,44 @@ def trunc(text: str, width: int) -> str:
         out.append(ch)
         used += step
     return "".join(out) + ".."
+
+
+# --------------------------------------------------------------------------
+# 격자(상점 확률표 채움 진행 확인)
+# --------------------------------------------------------------------------
+def odds_grid(
+    *,
+    levels: list[int],
+    costs: list[int],
+    values: dict[tuple[int, int], float],
+    declared: set[tuple[int, int]],
+    cell_width: int = 7,
+) -> list[str]:
+    """레벨 x 코스트 격자 줄 목록(사람이 하나씩 채울 때 쓰는 진행표).
+
+    셀 표기
+    ------
+    * 값이 있으면 퍼센트(예: ``30.0%``)
+    * 파일에 선언됐지만 값이 없으면 ``?``  (미채움 — 모르는 채로 둔 것)
+    * 파일에 선언조차 안 됐으면 ``.``      (격자 밖)
+
+    순수 함수라 도메인 객체에 의존하지 않는다(ShopOdds 를 모른다).
+    """
+    if not levels or not costs:
+        return []
+    header = pad("Lv", 3, ">") + " |" + "".join(
+        pad(f"{cost}코", cell_width, ">") for cost in costs
+    )
+    lines = [header, "-" * disp_len(header)]
+    for level in levels:
+        cells = [pad(str(level), 3, ">"), " |"]
+        for cost in costs:
+            key = (level, cost)
+            if key in values:
+                cells.append(pct_fmt(values[key], cell_width))
+            elif key in declared:
+                cells.append(pad("?", cell_width, ">"))
+            else:
+                cells.append(pad(".", cell_width, ">"))
+        lines.append("".join(cells))
+    return lines

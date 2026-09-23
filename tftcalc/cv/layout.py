@@ -65,6 +65,26 @@ INFO_REGIONS: dict[str, tuple[float, float, float, float]] = {
     "stage_round": (0.455, 0.012, 0.090, 0.030),
 }
 
+#: 슬롯 박스 **안에서** 별(성급)이 찍히는 상대 영역 (x0, y0, x1, y1).
+#: 별은 칸마다 같은 위치(하단 띠)에 1~3개가 같은 모양으로 찍히므로, 칸 전체가 아니라
+#: 이 띠만 잘라서 개수를 센다. 칸 안 비율이라 해상도가 달라도 그대로 환산된다.
+STAR_BAND: tuple[float, float, float, float] = (0.0, 0.76, 1.0, 1.0)
+
+
+def star_band(
+    slot_box: tuple[float, float, float, float],
+    *,
+    band: tuple[float, float, float, float] = STAR_BAND,
+) -> tuple[float, float, float, float]:
+    """슬롯 박스(비율 좌표든 픽셀이든) 안에서 별 영역의 하위 박스.
+
+    계산이 선형이라 단위와 무관하다 — 비율 박스를 넣으면 비율 하위 박스가,
+    픽셀 박스를 넣으면 픽셀 하위 박스가 나온다(픽셀이면 호출부가 반올림).
+    """
+    x, y, width, height = (float(value) for value in slot_box)
+    x0, y0, x1, y1 = band
+    return (x + width * x0, y + height * y0, width * (x1 - x0), height * (y1 - y0))
+
 DEFAULT_LAYOUT_PATH = Path(__file__).resolve().parents[2] / "data" / "layout_1920x1080.json"
 
 

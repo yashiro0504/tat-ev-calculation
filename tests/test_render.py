@@ -117,5 +117,52 @@ class TestDisplayWidth(unittest.TestCase):
                 self.assertLessEqual(render.disp_len(render.trunc(long_korean, width)), width)
 
 
+class TestOddsGrid(unittest.TestCase):
+    """상점 확률표 채움 격자(값 / 미채움 ? / 격자 밖 .)."""
+
+    LEVELS = [7, 8]
+    COSTS = [1, 4, 5]
+
+    def _grid(self, **overrides):
+        kwargs = dict(
+            levels=self.LEVELS,
+            costs=self.COSTS,
+            values={(8, 4): 0.30},
+            declared={(7, 1), (7, 4), (8, 4), (8, 5)},
+        )
+        kwargs.update(overrides)
+        return render.odds_grid(**kwargs)
+
+    def _row(self, lines, level: int) -> str:
+        return next(line for line in lines if line.lstrip().startswith(f"{level} |"))
+
+    def test_header_lists_costs(self):
+        lines = self._grid()
+        for cost in self.COSTS:
+            self.assertIn(f"{cost}코", lines[0])
+
+    def test_marks_value_pending_and_out_of_grid(self):
+        lines = self._grid()
+        level8 = self._row(lines, 8)
+        self.assertIn("30.0%", level8)  # 값이 있는 셀
+        self.assertIn("?", level8)      # (8,5) 선언됐지만 미채움
+        self.assertIn(".", level8)      # (8,1) 격자 밖
+        level7 = self._row(lines, 7)
+        self.assertIn("?", level7)      # (7,1),(7,4) 미채움
+        self.assertIn(".", level7)      # (7,5) 선언 안 됨
+        self.assertNotIn("30.0%", level7)
+
+    def test_rows_and_separator_have_equal_display_width(self):
+        lines = self._grid()
+        width = render.disp_len(lines[0])
+        self.assertEqual(len(lines[1]), width)  # 구분선
+        for line in lines[2:]:
+            self.assertEqual(render.disp_len(line), width)
+
+    def test_empty_grid_returns_nothing(self):
+        self.assertEqual(self._grid(levels=[]), [])
+        self.assertEqual(self._grid(costs=[]), [])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
