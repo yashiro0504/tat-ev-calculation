@@ -1,7 +1,7 @@
 # 작업 이어하기 가이드 (집에서 이어서)
 
 > 이 문서는 **다른 PC에서 바로 이어서 작업**하기 위한 런북입니다.
-> 현재 상태: 커밋 `274b317` (main), 테스트 110개 전부 통과, CLI 13개 명령, 외부 의존성 0개.
+> 현재 상태: 커밋 `e3a9651` (main, origin과 동기화됨), 테스트 110개 전부 통과, CLI 13개 명령, 외부 의존성 0개.
 
 ---
 
@@ -23,7 +23,7 @@ py -3 -m tftcalc.cli selftest  # 환경/데이터 자기점검
 ```
 기대 출력: `Ran 20/15/13/14/12/5/20/11 tests` + 각각 `OK` (= 110개).
 
-> **함정 1**: 이 PC의 `python`은 Microsoft Store 스텁이라 아무것도 실행하지 않습니다. 반드시 `py -3`.
+> **함정 1**: Windows의 `python`은 Microsoft Store 스텁일 수 있습니다. 반드시 `py -3`.
 > **함정 2**: 한글 경로/출력 때문에 깨져 보이면 `cmd /c "set PYTHONIOENCODING=utf-8 && py -3 ..."` 로 실행하세요.
 
 ---
@@ -167,7 +167,7 @@ py -3 -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3 
 
 | 항목 | 값 |
 |---|---|
-| 최신 커밋 | `274b317` (main, origin과 동기화됨) |
+| 최신 커밋 | `e3a9651` (main, origin과 동기화됨) — 직전 커밋에서 캘리브레이션 도구 크래시(`check_capture.py`)를 수정 |
 | 테스트 | **110개 전부 통과** — pool 20 / comp 15 / items 13 / economy 14 / survival 12 / report 5 / cv 20 / scan 11 |
 | CLI 명령 | **13개** — `odds selftest unit lobby outlook items plan survive report scan comp sensitivity robustness` |
 | 모듈 | `pool_math` `comp` `items` `economy` `survival` `lobby` `odds` `decision` `set_data` `cli` + `cv/{screen,fingerprint,layout,scan}` |
