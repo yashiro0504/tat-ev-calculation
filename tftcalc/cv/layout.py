@@ -30,7 +30,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .fingerprint import TemplateSet, classify
+from .fingerprint import DEFAULT_INSET, TemplateSet, classify
 from .screen import Image
 
 BASE_WIDTH = 1920
@@ -68,10 +68,34 @@ INFO_REGIONS: dict[str, tuple[float, float, float, float]] = {
 #: ``INFO_REGIONS`` 중 **단일 숫자**로 읽는 영역. 라운드('4-2')는 구분자가 있어 따로 읽는다.
 NUMERIC_INFO_KEYS: tuple[str, ...] = ("gold", "level", "my_hp")
 
+#: 별 띠 시작의 안전 여유(칸 높이 대비 비율).
+#: 지문은 칸 안쪽을 ``int(height * DEFAULT_INSET)`` 로 잘라내므로 경계가 정수 픽셀로
+#: 내려가면서 별 띠와 1px 이 겹칠 수 있다(실측: 벤치 칸 높이 92px 에서
+#: ``round(0.82 * 92) = 75`` < 지문 하단 ``92 - int(92 * 0.18) = 76``). 1px 만 겹쳐도
+#: 밝은 별 픽셀은 z-정규화된 지문을 흔든다. 그래서 시작선을 2%p 낮춘다(칸 높이 50px
+#: 이상이면 정수 여유가 항상 1px 이상이 된다).
+STAR_BAND_INSET_MARGIN = 0.02
+
 #: 슬롯 박스 **안에서** 별(성급)이 찍히는 상대 영역 (x0, y0, x1, y1).
 #: 별은 칸마다 같은 위치(하단 띠)에 1~3개가 같은 모양으로 찍히므로, 칸 전체가 아니라
 #: 이 띠만 잘라서 개수를 센다. 칸 안 비율이라 해상도가 달라도 그대로 환산된다.
-STAR_BAND: tuple[float, float, float, float] = (0.0, 0.76, 1.0, 1.0)
+#:
+#: **지문(fingerprint) 영역과 겹치면 안 된다.** 지문은 테두리·발광을 피하려고 칸의
+#: 위아래를 ``DEFAULT_INSET``(18%)만큼 잘라내는데, 별 픽셀이 그 안으로 들어오면
+#: **같은 챔피언인데도** 1성/2성/3성이 서로 다른 유사도를 낸다. 실측(2026-09-23):
+#: 합성 3성 칸의 유사도가 1.0000 -> 0.6341 로 떨어졌고, ``fingerprint.MIN_SCORE`` 를
+#: 0.85(비아이콘 차단 바닥선)로 올린 뒤에는 2·3성 칸이 통째로 'unknown' 이 됐다
+#: (tests/test_scan.py::TestStarOcr.test_three_stars_detected).
+#: 그래서 하단 띠의 시작을 지문이 잘라내는 아래쪽 경계(``1 - DEFAULT_INSET``)보다
+#: ``STAR_BAND_INSET_MARGIN`` 만큼 더 아래로 내린다. 별이 실제로는 이 띠보다 위에
+#: 찍히면 개수는 0으로 읽히고, 그 칸은 조용히 3배 틀리는 대신 "별을 못 봄 + 1성 고지"로
+#: 떨어진다(안전한 실패 — 풀 소모를 3배로 잡는 것보다 낫다).
+STAR_BAND: tuple[float, float, float, float] = (
+    0.0,
+    1.0 - DEFAULT_INSET + STAR_BAND_INSET_MARGIN,
+    1.0,
+    1.0,
+)
 
 
 def star_band(

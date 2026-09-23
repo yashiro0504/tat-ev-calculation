@@ -268,7 +268,7 @@ python tests\test_render.py                       # 20 tests, OK  (표기 정직
 python tests\test_rules.py                        #  8 tests, OK  (규칙 기반 판정)
 python tests\test_trials_defaults.py              #  4 tests, OK  (시행 수 상수)
 python tests\test_ocr.py                          # 24 tests, OK  (별/숫자/라운드 OCR)
-python -m unittest discover -s tests -t .        # 위 전부 한 번에(263 tests, OK)
+python -m unittest discover -s tests -t .        # 위 전부 한 번에(272 tests, OK)
 python scripts\check_capture.py --out shot.bmp    # 캡처 확인 + 좌표 디버그
 python scripts\build_templates.py --from-comps data/comps_set18.json   # 아이콘 템플릿 생성
 python scripts\simulate_scan.py --units ahri,morgana,sett --out sim_shot.bmp  # 스캔 검증용 가짜 화면
@@ -675,13 +675,38 @@ python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 38 --streak -3
 
 **구조**
 ```
-tftcalc/cv/screen.py       화면 캡처(GDI, ctypes) + BMP 저장/로드(직접 구현) + 창 찾기
+tftcalc/cv/screen.py       화면 캡처(GDI, ctypes) + BMP 저장/로드(직접 구현) + 창/클라이언트 찾기
 tftcalc/cv/fingerprint.py  아이콘 지문(8x8 정규화 그레이스케일) + 분류 + 마진 정책
-tftcalc/cv/layout.py       1920x1080 기준 좌표(비율 정의, JSON 오버라이드 가능)
+tftcalc/cv/layout.py       1920x1080 기준 좌표(비율 정의, JSON 오버라이드 가능) + 별 띠
+tftcalc/cv/ocr.py          별(면적 비율) / 숫자(자릿수 분리 + 지문) 읽기
+tftcalc/cv/scan.py         칸 인식 -> 코스트 조회 -> 로비 스냅샷(상점은 '보유'로 세지 않음)
 scripts/build_templates.py Data Dragon 아이콘 -> 템플릿, 또는 화면 크롭 -> 템플릿
 scripts/check_capture.py   캡처 확인 + 좌표 디버그(BMP 저장) + 인식 시험
 scripts/crop_slots.py      벤치/상점 칸 크롭 저장(TFT 전용 유닛 라벨링용)
+scripts/simulate_scan.py   게임 없이 합성 화면으로 스캔 재현(회귀 테스트)
 ```
+
+**창모드에서 쓰기 (`--window`)**: 비율 좌표는 게임 화면(=창의 **클라이언트 영역**) 기준이다.
+창 전체를 캡처하면 타이틀바·테두리(실측 31px/8px)만큼 밀려 칸이 어긋난다. 그래서 `scan`/
+`report --scan`/`check_capture` 는 `--window <제목>` 로 클라이언트 영역만 잘라 쓴다.
+제목은 정확 일치를 우선하되 뒤 공백·대소문자 차이와 부분 일치도 받는다(실제 TFT 창 제목은
+`'TFT  '` 처럼 뒤에 공백이 붙는다 → `--window TFT` 로 찾힌다).
+```powershell
+python -m tftcalc.cli scan --templates data\templates_set18.json --window TFT --area shop,bench
+python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3 `
+    --scan --scan-window TFT --templates data\templates_set18.json ...
+```
+
+**분류 문턱 두 개와 실측 근거** (숫자는 코드 상수 주석에 근거가 함께 있다)
+| 상수 | 값 | 역할 | 실측 |
+|---|---|---|---|
+| `fingerprint.MIN_SCORE` | 0.85 | **아이콘이 아닌 영역**(빈 칸/바탕화면/가림)을 거르는 바닥선 | 서로 다른 아이콘 쌍 최대 0.7438 / 비아이콘 화면 내용 최대 0.6494 / 실제 아이콘 0.95~0.97 |
+| `fingerprint.REVIEW_MARGIN` | 0.05 | 1·2위가 비슷하면 확정하지 않음(진짜 분별력) | — |
+바닥선을 0.5 로 두면 빈 바탕화면의 상점/벤치 좌표에서도 챔피언이 '확정'되어 스냅샷이 오염된다
+(실측 재현). 반대로 올리면 별(성급) 장식이 지문에 섞이는 문제가 드러나는데,
+`layout.STAR_BAND` 를 지문이 잘라내는 경계 **아래**로 내려(안전 여유 2%p) 별 픽셀이 지문에
+들어가지 않게 했다 — 안 그러면 같은 챔피언도 1성 1.0000 / 3성 0.6341 로 갈려 2·3성 칸이 통째로
+'unknown' 이 된다(테스트 `test_three_stars_detected` 가 그 회귀를 고정한다).
 
 **왜 슬라이딩 템플릿 매칭이 아니라 '칸 분류'인가**: TFT UI 좌표는 고정이다(벤치 9칸, 상점 5칸).
 그래서 화면 전체를 훑을 필요 없이 칸을 잘라 NxN 지문으로 줄이고 후보와 거리만 재면 된다 →
@@ -712,9 +737,13 @@ python scripts/build_templates.py --from-crops data/crops
 ```
 
 **정직하게 말할 한계 (중요)**
-1. **게임 화면에서의 정확도/좌표는 아직 검증하지 못했다.** 이 환경에 TFT 게임 화면이 없기 때문이다.
-   좌표(`layout.py`)는 공개된 UI 배치를 바탕으로 넣은 **기본값**이고, `check_capture.py`로 저장한
-   BMP를 보며 `data/layout_1920x1080.json`으로 보정하는 절차를 문서화해 두었다.
+1. **게임 화면에서의 정확도/좌표는 아직 검증하지 못했다.** 좌표(`layout.py`)는 공개된 UI 배치를
+   바탕으로 넣은 **기본값**이고, `check_capture.py`로 저장한 BMP를 보며
+   `data/layout_1920x1080.json`으로 보정하는 절차를 문서화해 두었다.
+   실게임 창모드(클라이언트 2120x1191)에서 1회 측정한 결과는 **상점·벤치 14칸 전부
+   0.49~0.73**(바닥선 0.85 미만 → 전부 "확인 필요")이었다. 즉 인식은 **아직 안 되고**,
+   다음 할 일은 좌표 캘리브레이션(+ 게임 카드 아트에 맞춘 크롭 템플릿)이다. 이 상태에서도
+   도구는 값을 만들어내지 않는다(0칸 확정 / 14칸 확인 필요 / 숫자는 손 입력).
 2. **성급(1/2/3성) 별 인식은 골격을 구현했지만 기본 꺼짐이다.** 별 영역의 밝은 비율은 아이콘
    자체와 섞이기 쉬워(실측: 별 1개 면적의 약 12배) 실게임 화면에 맞추기 전에는 1성을 2성으로
    읽는 식의 **3배 오차**가 날 수 있다. `--star-ocr` 로 켜되, 안전하게는 `--star 'Ahri=2'` 로 지정한다.
@@ -798,7 +827,7 @@ python -m tftcalc.cli scan --templates data/templates_set18.json --in sim_shot.b
 ## 6. 다음 단계 (권장 순서 + 각 단계 게이트)
 
 > **다른 PC에서 이어서 작업할 때는 [`NEXT_STEPS.md`](NEXT_STEPS.md) 를 먼저 보세요.**
-> 클론 → 테스트 263개 확인 → 좌표 캘리브레이션 → 성급/숫자 인식 설계까지 실행 명령 단위로 정리돼 있습니다.
+> 클론 → 테스트 272개 확인 → 좌표 캘리브레이션 → 성급/숫자 인식 설계까지 실행 명령 단위로 정리돼 있습니다.
 
 | 주차 | 할 일 | 통과 기준(게이트) |
 |---|---|---|

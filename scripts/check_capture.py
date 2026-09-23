@@ -9,7 +9,8 @@
 사용 예
 -------
   python scripts/check_capture.py --out shot.bmp                 # 전체 화면 캡처 + 저장
-  python scripts/check_capture.py --window "Teamfight Tactics" --out shot.bmp
+  python scripts/check_capture.py --window "Teamfight Tactics" --out shot.bmp   # 창의 클라이언트 영역
+  python scripts/check_capture.py --window TFT --out shot.bmp                  # 창모드(제목 뒤 공백/대소문자 무시)
   python scripts/check_capture.py --region 0,0,1920,1080 --out shot.bmp
   python scripts/check_capture.py --in shot.bmp --shop           # 저장본으로 상점 5칸 인식 시험
   python scripts/check_capture.py --in shot.bmp --layout data/layout_1920x1080.json --shop
@@ -37,7 +38,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="화면 캡처 확인 / 레이아웃 디버그")
     parser.add_argument("--out", default=None, help="캡처를 BMP 로 저장")
     parser.add_argument("--in", dest="source", default=None, help="BMP 파일을 입력으로 사용")
-    parser.add_argument("--window", default=None, help="창 제목(주면 그 창 영역만)")
+    parser.add_argument(
+        "--window", default=None, help="창 제목(주면 그 창의 클라이언트 영역만 — 창모드 권장)"
+    )
     parser.add_argument("--region", default=None, help="영역 캡처 'x,y,w,h'")
     parser.add_argument(
         "--templates",
@@ -57,11 +60,11 @@ def main(argv: list[str] | None = None) -> int:
         image = screen.load_bmp(args.source)
         print(f"[입력] {args.source}: {image.width}x{image.height} (BMP)")
     elif args.window:
-        image = screen.capture_window(args.window)
+        image = screen.capture_client(args.window)
         if image is None:
             print(f"[오류] 창을 찾지 못했습니다: {args.window}")
             return 2
-        print(f"[캡처] 창 '{args.window}': {image.width}x{image.height}")
+        print(f"[캡처] 창 '{args.window}' 클라이언트 영역: {image.width}x{image.height}")
     elif args.region:
         x, y, width, height = (int(value) for value in args.region.split(","))
         image = screen.capture(x, y, width, height)

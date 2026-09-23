@@ -311,9 +311,15 @@ class TestStarOcr(unittest.TestCase):
         self.assertTrue(any("별을 못 본" in note for note in report.notes))
 
     def test_ambiguous_star_is_excluded_not_guessed(self):
-        """별 비율이 정수 경계에 가까우면 개수를 확정하지 않고 칸을 뺀다."""
+        """별 비율이 정수 경계에 가까우면 개수를 확정하지 않고 칸을 뺀다.
+
+        ``star_side=13`` 은 이 칸(상점 253x95, 별 띠 높이 15px)에서 비율이 2성과 3성의
+        **중간**(scaled 2.47)이 되도록 고른 값이다. 별 띠 기하(``layout.STAR_BAND``)나
+        ``ocr.STAR_AREA_RATIO`` 가 바뀌면 이 값도 다시 골라야 한다(실측 스윕: 12->2.26
+        확정, 13->2.47 애매, 14->2.68 애매, 15->2.90 확정).
+        """
         canvas, templates = synthetic_screenshot(
-            {"shop_1": 1}, stars={"shop_1": 2}, star_side=15
+            {"shop_1": 1}, stars={"shop_1": 2}, star_side=13
         )
         report = self._scan(canvas, templates)
         self.assertEqual(report.recognized, [])
@@ -465,6 +471,33 @@ class TestCliScanAndReport(unittest.TestCase):
             # 상점은 '보유'가 아니므로 board/bench 에는 안 들어간다
             self.assertEqual(data["players"][0]["board"], [])
             self.assertEqual(data["players"][0]["bench"], [])
+
+    @unittest.skipUnless(screen.is_supported(), "Windows(GDI) 아님")
+    def test_cli_scan_with_missing_window_fails_cleanly(self):
+        """창모드 캡처: 없는 창 제목이면 **조용히 전체 화면으로 대체하지 않고** 실패한다.
+
+        (전체 화면으로 대체하면 창모드에서 좌표가 어긋난 채 '스캔 성공'으로 보여
+        잘못된 스냅샷을 만든다 -> 그게 더 위험하다.)
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            _, templates_path, costs_path = self._write_fixture(tmp_path, {"shop_1": 1})
+            out = tmp_path / "my_board.json"
+            buffer = io.StringIO()
+            with redirect_stdout(buffer):
+                code = cli.main(
+                    [
+                        "scan",
+                        "--templates", str(templates_path),
+                        "--costs", str(costs_path),
+                        "--window", "이런 창은 없습니다 (테스트용 제목)",
+                        "--area", "shop",
+                        "--out", str(out),
+                    ]
+                )
+            self.assertEqual(code, 2)
+            self.assertIn("창을 찾지 못했습니다", buffer.getvalue())
+            self.assertFalse(out.exists())
 
     def test_cli_scan_keeps_opponents_from_existing_snapshot(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -232,6 +232,30 @@ class TestLayout(unittest.TestCase):
                 layout.load_overrides(path)
 
 
+class TestWindowTitleMatching(unittest.TestCase):
+    """창 제목 매칭은 관대해야 한다 — 실제 TFT 창 제목은 뒤에 공백이 붙어 있다('TFT  ').
+
+    Regression(2026-09-23): ``FindWindowW`` 정확 일치만 써서 ``--window TFT`` 가
+    실제 게임 창을 찾지 못했다(제목이 ``'TFT  '`` 였다).
+    """
+
+    def test_exact_match_beats_loose_match(self):
+        self.assertGreater(
+            screen._title_score("TFT", "TFT"), screen._title_score("TFT  ", "TFT")
+        )
+
+    def test_trailing_spaces_and_case_are_tolerated(self):
+        self.assertEqual(screen._title_score("TFT  ", "TFT"), 2)
+        self.assertEqual(screen._title_score("teamfight tactics", "TeamFight Tactics"), 2)
+
+    def test_substring_is_weak_but_accepted(self):
+        self.assertEqual(screen._title_score("Teamfight Tactics", "Tactics"), 1)
+
+    def test_unrelated_or_empty_query_scores_zero(self):
+        self.assertEqual(screen._title_score("League of Legends", "TFT"), 0)
+        self.assertEqual(screen._title_score("TFT", ""), 0)
+
+
 class TestRealCapture(unittest.TestCase):
     """이 PC 에서 실제 캡처가 되는지(스모크). 미지원 환경이면 건너뛴다."""
 
@@ -244,6 +268,11 @@ class TestRealCapture(unittest.TestCase):
 
     def test_find_missing_window_returns_none(self):
         self.assertIsNone(screen.find_window("이런 창은 없습니다 (테스트용 제목)"))
+
+    def test_find_missing_client_returns_none(self):
+        """창모드 캡처용 클라이언트 조회도 없는 창이면 None(조용히 아무 창이나 잡지 않는다)."""
+        self.assertIsNone(screen.find_client("이런 창은 없습니다 (테스트용 제목)"))
+        self.assertIsNone(screen.capture_client("이런 창은 없습니다 (테스트용 제목)"))
 
 
 class TestBuiltTemplates(unittest.TestCase):
@@ -314,6 +343,34 @@ class TestBuiltTemplates(unittest.TestCase):
         return screen.Image(width=size, height=size, pixels=pixels)
 
 
+class TestStarBandStaysOutOfFingerprint(unittest.TestCase):
+    """별(성급) 띠는 지문 영역 **밖**에 있어야 한다.
+
+    Regression(2026-09-23): ``STAR_BAND`` 가 0.76 부터라 지문이 잘라내는 아래쪽 18%
+    (경계 0.82) 와 6%p 겹쳤다. 그래서 별 픽셀이 지문에 섞여 **같은 챔피언인데도**
+    1성 1.0000 / 3성 0.6341 로 갈렸고, ``MIN_SCORE`` 를 0.85(비아이콘 차단 바닥선)로
+    올린 뒤에는 2·3성 칸이 통째로 'unknown' 이 됐다
+    (tests/test_scan.py::TestStarOcr.test_three_stars_detected).
+    """
+
+    def test_star_band_starts_below_the_fingerprint_boundary(self):
+        """별 띠 시작선은 지문이 잘라내는 경계보다 **아래**(=비율이 큼)여야 한다."""
+        self.assertGreater(layout.STAR_BAND[1], 1.0 - fingerprint.DEFAULT_INSET)
+        self.assertLess(layout.STAR_BAND[1], 1.0)
+
+    def test_star_pixels_are_outside_the_fingerprinted_area(self):
+        """실제 슬롯 픽셀 기준으로도 별 띠가 지문 안쪽으로 들어오지 않아야 한다."""
+        for area in ("bench", "shop"):
+            for name, box in layout.resolve(area, None):
+                x, y, width, height = layout.to_pixels(
+                    box, layout.BASE_WIDTH, layout.BASE_HEIGHT
+                )
+                _, band_top, _, _ = layout.star_band((x, y, width, height))
+                fingerprint_bottom = y + height - int(height * fingerprint.DEFAULT_INSET)
+                with self.subTest(slot=name):
+                    self.assertGreaterEqual(int(round(band_top)), fingerprint_bottom)
+
+
 class TestThresholdsComeFromConstants(unittest.TestCase):
     """분류 문턱이 모듈 상수에서 오고, 그 근거가 문서화돼 있는지(L10)."""
 
@@ -333,11 +390,17 @@ class TestThresholdsComeFromConstants(unittest.TestCase):
         self.assertGreater(fingerprint.REVIEW_MARGIN, 0.0)
         self.assertLess(fingerprint.REVIEW_MARGIN, 1.0)
 
-    def test_min_score_is_a_floor_not_a_verdict(self):
-        """실측상 서로 다른 아이콘도 min_score 를 넘을 수 있다(바닥선일 뿐).
+    def test_min_score_sits_above_icon_confusion_range(self):
+        """``MIN_SCORE`` 는 '서로 다른 아이콘끼리의 최대 유사도'보다 **높아야** 한다.
 
-        이 사실을 테스트로 고정해둔다 — 누군가 min_score 를 "오분류 차단 문턱"
-        으로 착각하고 올리면 미검출이 늘어난다.
+        실측(2026-09-23):
+        * 서로 다른 아이콘 쌍 최대 = 0.7438 (템플릿 28개, 378쌍)
+        * 아이콘이 아닌 화면 내용   = 0.6494 (게임 없는 바탕화면의 14칸)
+        * 실제 아이콘              = 0.95~0.97
+
+        바닥선이 0.74 와 0.95 사이에 있으면 비(非)아이콘은 걸러지고 아이콘은 통과한다.
+        Regression: 기본값이 0.5 였을 때는 이 구간 **안**이라서, 게임을 켜지 않은
+        바탕화면에서도 Gnar/Kog'Maw 가 '확정'되어 스냅샷을 오염시켰다.
         """
         path = ROOT / "data" / "templates_set18.json"
         if not path.exists():
@@ -350,11 +413,29 @@ class TestThresholdsComeFromConstants(unittest.TestCase):
                     worst_distinct,
                     fingerprint.similarity(first.values, second.values),
                 )
-        self.assertGreater(
+        self.assertLess(
             worst_distinct,
             fingerprint.MIN_SCORE,
-            "서로 다른 아이콘이 min_score 를 넘지 못하면 이 테스트의 전제가 바뀐 것이다",
+            "서로 다른 아이콘이 바닥선을 넘으면 '아이콘이 아님'을 걸러낼 수 없다",
         )
+
+    def test_second_best_is_below_min_score_for_every_icon(self):
+        """각 아이콘은 1등이 자기 자신이고 2등은 바닥선 아래여야 한다(오분류 0)."""
+        path = ROOT / "data" / "templates_set18.json"
+        if not path.exists():
+            self.skipTest("templates_set18.json 없음")
+        template_set = fingerprint.TemplateSet.load(path)
+        for template in template_set.templates:
+            scores = sorted(
+                (
+                    (fingerprint.similarity(template.values, other.values), other.name)
+                    for other in template_set.templates
+                    if other.name != template.name
+                ),
+                reverse=True,
+            )
+            with self.subTest(name=template.name):
+                self.assertLess(scores[0][0], fingerprint.MIN_SCORE)
 
 
 if __name__ == "__main__":

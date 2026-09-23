@@ -150,11 +150,61 @@ def capture(
         _user32.ReleaseDC(0, screen_dc)
 
 
-def find_window(title: str) -> tuple[int, int, int, int] | None:
-    """창 제목으로 (x, y, width, height) 를 찾는다. 없으면 None."""
+def _title_score(window_title: str, wanted: str) -> int:
+    """창 제목 매칭 점수(높을수록 좋음). 0 이면 불일치.
+
+    ``FindWindowW`` 는 제목이 **정확히** 같아야 하는데, 실제 TFT 창 제목은 뒤에 공백이
+    붙어 있다(실측: ``'TFT  '``). 그래서 정확 일치를 우선하되 공백/대소문자 차이와
+    부분 일치까지 허용한다.
+
+    * 3 = 정확 일치
+    * 2 = 양끝 공백 제거 후 일치(대소문자 무시)
+    * 1 = 부분 일치(대소문자 무시)
+    """
+    if not wanted:
+        return 0
+    if window_title == wanted:
+        return 3
+    left, right = window_title.strip().casefold(), wanted.strip().casefold()
+    if left == right:
+        return 2
+    if right and right in left:
+        return 1
+    return 0
+
+
+def _find_handle(title: str) -> int | None:
+    """제목이 가장 잘 맞는 최상위 창 핸들(없으면 None)."""
     if not is_supported():
         return None
-    handle = _user32.FindWindowW(None, title)
+    best_score = 0
+    best_handle = 0
+    callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+    def visit(handle, _param):
+        nonlocal best_score, best_handle
+        length = _user32.GetWindowTextLengthW(handle)
+        if length:
+            buffer = ctypes.create_unicode_buffer(length + 1)
+            _user32.GetWindowTextW(handle, buffer, length + 1)
+            score = _title_score(buffer.value, title)
+            if score > best_score:
+                best_score, best_handle = score, handle
+        return True
+
+    _user32.EnumWindows(callback_type(visit), 0)
+    return best_handle or None
+
+
+def find_window(title: str) -> tuple[int, int, int, int] | None:
+    """창 제목으로 (x, y, width, height) 를 찾는다. 없으면 None.
+
+    제목은 정확 일치를 우선하되, 뒤 공백/대소문자 차이와 부분 일치도 받아준다
+    (``_title_score``). 창 전체(타이틀바·테두리 포함) 크기다.
+    """
+    if not is_supported():
+        return None
+    handle = _find_handle(title)
     if not handle:
         return None
     rect = wintypes.RECT()
@@ -169,6 +219,41 @@ def capture_window(title: str) -> Image | None:
     if rect is None:
         return None
     x, y, width, height = rect
+    return capture(x, y, width, height)
+
+
+def find_client(title: str) -> tuple[int, int, int, int] | None:
+    """창 제목으로 **클라이언트 영역**(타이틀바·테두리 제외)을 찾는다. 없으면 None.
+
+    왜 창 전체가 아니라 클라이언트인가: 비율 좌표(``cv/layout.py``)는 게임 화면(=클라이언트)
+    기준으로 만든 값이다. 창모드에서 창 전체를 캡처하면 타이틀바·테두리 두께만큼
+    좌표가 위/왼쪽으로 밀려 상점·벤치 칸이 어긋난다(실측: 타이틀바 31px).
+    """
+    if not is_supported():
+        return None
+    handle = _find_handle(title)
+    if not handle:
+        return None
+    rect = wintypes.RECT()
+    if not _user32.GetClientRect(handle, ctypes.byref(rect)):
+        return None
+    origin = wintypes.POINT(0, 0)
+    if not _user32.ClientToScreen(handle, ctypes.byref(origin)):
+        return None
+    return (origin.x, origin.y, rect.right, rect.bottom)
+
+
+def capture_client(title: str) -> Image | None:
+    """창 제목으로 그 창의 클라이언트 영역만 캡처(없으면 None).
+
+    창모드(``TFT`` 등)에서 비율 좌표를 그대로 쓰려면 이 함수를 쓴다.
+    """
+    rect = find_client(title)
+    if rect is None:
+        return None
+    x, y, width, height = rect
+    if width <= 0 or height <= 0:
+        return None
     return capture(x, y, width, height)
 
 

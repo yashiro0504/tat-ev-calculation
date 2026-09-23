@@ -1,7 +1,9 @@
 # 작업 이어하기 가이드 (집에서 이어서)
 
 > 이 문서는 **다른 PC에서 바로 이어서 작업**하기 위한 런북입니다.
-> 현재 상태: 커밋 `ce27dd5` (main), 테스트 263개 전부 통과, CLI 13개 명령, 외부 의존성 0개.
+> 현재 상태: 커밋 `dacdf41` (main, origin과 동기화) + **미커밋 작업 있음**(아래 §0.5),
+> 테스트 **272개** 전부 통과, CLI 13개 명령, 외부 의존성 0개.
+> **인식은 아직 실게임에서 안 됩니다** — 좌표 캘리브레이션이 남았습니다(§1).
 
 ---
 
@@ -15,9 +17,9 @@ python -m tftcalc.cli selftest  # 환경/데이터 자기점검
 
 **설치할 것이 없습니다.** Python 3.12+ 표준 라이브러리만 씁니다(ctypes 포함). `requirements.txt`를 만들지 마세요 — 무의존성이 이 프로젝트의 장점입니다.
 
-전체 테스트(14개 파일, 263개):
+전체 테스트(14개 파일, 272개):
 ```powershell
-python -m unittest discover -s tests -t .      # 가장 간단(263 tests, OK)
+python -m unittest discover -s tests -t .      # 가장 간단(272 tests, OK)
 ```
 `tests/__init__.py` 를 추가해 discover 가 동작합니다. 파일별로 돌리려면:
 
@@ -29,11 +31,34 @@ python -m unittest discover -s tests -t .      # 가장 간단(263 tests, OK)
  python tests\test_ocr.py) `
  2>&1 | Select-String 'Ran |^OK|FAILED'
 ```
-기대 출력: `Ran 39/18/15/26/16/6/27/28/32/20/8/4/24 tests` + 각각 `OK` (= 263개).
+기대 출력: `Ran 39/18/15/26/16/6/35/29/32/20/8/4/24 tests` + 각각 `OK` (= 272개).
 
 > **함정 1**: 실행기는 PC마다 다르다 — `python` 이 Microsoft Store 스텁이면 `py -3`,
 > `py` 런처가 없으면 `python`. 아래 예시는 **`python` 기준**이다.
 > **함정 2**: 한글 경로/출력 때문에 깨져 보이면 `cmd /c "set PYTHONIOENCODING=utf-8 && python ..."` 로 실행하세요.
+
+---
+
+## 0.5 직전 세션에서 바뀐 것 (커밋 대상)
+
+| 변경 | 파일 | 이유(실측 근거) |
+|---|---|---|
+| `MIN_SCORE` 0.5 → **0.85** | `tftcalc/cv/fingerprint.py`, `tests/test_cv.py` | 비아이콘 화면 내용이 최대 0.6494 까지 나와서, 0.5 바닥선에서는 **게임을 켜지 않은 바탕화면**의 상점/벤치 좌표가 Gnar/Kog'Maw 로 '확정'되어 스냅샷을 오염시켰다(재현됨). 서로 다른 아이콘 쌍 최대 0.7438 과 실제 아이콘 0.95~0.97 **사이**에 바닥선을 둔다. |
+| `STAR_BAND` 0.76 → **0.84** (지문 경계 아래 + 안전 여유 2%p) | `tftcalc/cv/layout.py`, `tests/test_cv.py` | 별 픽셀이 지문 내부(하단 18% 인셋)에 들어오면 **같은 챔피언이 1성 1.0000 / 3성 0.6341** 로 갈렸다. `MIN_SCORE` 0.85 와 겹치면 2·3성 칸이 통째로 'unknown' 이 된다(`test_three_stars_detected` 가 회귀 고정). |
+| `scan --window`, `report --scan-window` 신규 | `tftcalc/cli.py`, `tftcalc/cv/screen.py`(`find_client`/`capture_client`/`_title_score`) | 창모드에서 전체 화면 캡처로는 비율 좌표가 어긋난다. **클라이언트 영역**만 캡처하고, 창 제목은 뒤 공백·대소문자·부분 일치를 허용(실제 TFT 창 제목이 `'TFT  '` 라서 `FindWindowW` 정확 일치가 실패했다). |
+| `check_capture --window` 도 클라이언트 영역 | `scripts/check_capture.py` | 캘리브레이션용 좌표가 타이틀바(31px)·테두리(8px)만큼 밀리면 **잘못된 보정값**을 저장하게 된다. |
+
+**실게임 1회 측정(창모드, 클라이언트 2120x1191)** — 도구가 값을 만들어내지 않는지 확인:
+```powershell
+python -m tftcalc.cli scan --templates data\templates_set18.json --window TFT --area shop,bench
+```
+```
+[캡처] 창 'TFT' 클라이언트 영역 2120x1191
+인식 확정 0칸 / 확인 필요 14칸 (신뢰도 0%)     <- 상점·벤치 14칸 점수 0.49~0.73 (바닥선 미만)
+  [정보] 골드 ? / 레벨 ? / HP ? / 라운드 ?   ('?' = 못 읽음 → 손 입력)
+```
+즉 좌표가 아직 안 맞아 **정직하게 실패**한다(0칸 확정, 14칸 확인 필요). 다음 할 일은 §1 이다.
+주의: "하나 선택"(아이템/증강) 화면에서는 상점·벤치가 없으므로 **일반 인게임 상태**에서 측정해야 한다.
 
 ---
 
@@ -44,10 +69,12 @@ python -m unittest discover -s tests -t .      # 가장 간단(263 tests, OK)
 ```powershell
 # 1) TFT를 창모드(또는 전체화면 창모드)로 띄우고 상점이 보이는 상태에서
 python scripts\check_capture.py --out shot.bmp                 # 캡처 + 저장(인식 시험 포함)
-python scripts\check_capture.py --window "Teamfight Tactics" --out shot.bmp   # 특정 창만
+python scripts\check_capture.py --window TFT --out shot.bmp    # 창모드: 클라이언트 영역만
 python scripts\check_capture.py --in shot.bmp --shop           # 저장본으로 상점 5칸 인식
 python scripts\check_capture.py --in shot.bmp --no-templates   # 캡처 상태만 확인
 ```
+> 창모드면 **반드시 `--window TFT`** 를 쓰세요. 전체 화면 캡처는 게임이 화면 일부만 차지해
+> 비율 좌표가 어긋납니다(창 제목은 `TFT` 로 충분 — 뒤 공백/대소문자/부분 일치 허용).
 
 `--in shot.bmp --shop` 이 출력하는 표를 그대로 쓰면 됩니다(실측 예):
 ```
@@ -76,9 +103,9 @@ python scripts\check_capture.py --in shot.bmp --no-templates   # 캡처 상태�
 **확인(게임 아이콘 그대로 인식되는지)**:
 ```powershell
 python -m tftcalc.cli scan --templates data\templates_set18.json --in shot.bmp --area bench,shop
-python -m tftcalc.cli scan --templates data\templates_set18.json --in shot.bmp --area bench,shop --out data\my_board.json
+python -m tftcalc.cli scan --templates data\templates_set18.json --window TFT --area bench,shop --out data\my_board.json
 python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3 `
-    --scan --templates data\templates_set18.json --scan-in shot.bmp --scan-out data\my_board.json `
+    --scan --templates data\templates_set18.json --scan-window TFT --scan-out data\my_board.json `
     --snapshot data\lobby.json --comps data\comps_set18.json `
     --odds-file data\set18_shop_odds_assumed.json --components rod:2,gloves
 ```
@@ -87,7 +114,8 @@ python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3
 * **스캔은 상점 칸을 `shop` 으로 분리합니다**(보유로 세지 않음). 상점에 보이는 기물은 아직 사지 않은
   것이라, 보유로 세면 판정이 낙관 편향됩니다. 지금 산다고 가정하려면 `--shop-as-owned` 를 붙이세요
   (붙이면 보유로 세고 `[가정]` 이 출력됩니다).
-* `--scan-in` 을 빼면 실제 화면을 캡처합니다(게임이 떠 있어야 함).
+* `--scan-in` 을 빼면 실제 화면을 캡처합니다(게임이 떠 있어야 함). **창모드면 `--scan-window TFT`**
+  를 쓰세요 — 그 창의 클라이언트 영역만 잘라 비율 좌표가 그대로 통합니다(창 제목은 `TFT` 면 충분).
 
 
 **통과 기준(게이트)**
@@ -113,7 +141,7 @@ python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3
 | 파일 | 내용 |
 |---|---|
 | `tftcalc/cv/ocr.py` (신규) | `star_ratio`/`stars_from_ratio`/`count_stars` — 별 개수를 **밝은 픽셀 면적 비율**로 센다(분류 아님). `star_is_ambiguous` 로 **경계·과대 비율을 걸러낸다**. `split_digits`(열 방향 투영) + `read_number`(자릿수별 지문 분류, **하나라도 애매하면 `None`**) |
-| `tftcalc/cv/layout.py` | `STAR_BAND`(칸 안 상대 비율) + `star_band(slot_box)` — 해상도 무관 |
+| `tftcalc/cv/layout.py` | `STAR_BAND`(칸 안 상대 비율) + `star_band(slot_box)` — 해상도 무관. **지문이 잘라내는 하단 경계 아래에서 시작**해야 한다(아래 ⚠️) |
 | `tftcalc/cv/scan.py` | `ScanReport.info`(`gold`/`level`/`my_hp`) + `stage_round`, 성급 우선순위(**지정 > 인식 > 기본값**), 미인식 고지 |
 | `tftcalc/cli.py` | `--star-ocr`(켜기), `--digits`(숫자 지문 JSON) — `scan`/`report` 공통 |
 | `tests/test_ocr.py` (신규) | 합성 이미지 검증: 별 0~3 · 경계 거부 · 자릿수 분리 · 숫자(7/42/105) · **라운드('4-2')와 거부 케이스** · 미인식 `None` |
@@ -127,6 +155,18 @@ python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3
 * `--star-ocr` 로 켜되, **애매하거나 과대 비율이면 그 칸을 스냅샷에서 빼고 `[확인 필요]`** 로 보고한다(추정 금지).
 * 켜서 제대로 쓰려면 `ocr.STAR_BRIGHTNESS` / `ocr.STAR_AREA_RATIO` / `layout.STAR_BAND` 를 실게임 화면에 맞춰야 한다.
 
+### ⚠️ 두 번째 발견 — 별 띠가 지문 영역과 겹치면 2·3성이 통째로 날아간다
+`STAR_BAND` 가 0.76 부터라 지문(`fingerprint`, 위아래 18% 인셋 = 경계 0.82)과 **6%p 겹쳤다**.
+그래서 별 픽셀이 지문에 섞여 **같은 챔피언인데도** 1성 1.0000 / 3성 0.6341 로 갈렸고,
+`MIN_SCORE` 를 0.85 로 올린 뒤에는 2·3성 칸이 통째로 'unknown' 이 됐다
+(`tests/test_scan.py::TestStarOcr.test_three_stars_detected` 가 그 회귀를 고정한다).
+
+* 수정: `STAR_BAND` 시작선을 `1 - fingerprint.DEFAULT_INSET + STAR_BAND_INSET_MARGIN(0.02)` 로
+  내려(현재 **0.84**) 별 픽셀이 지문에 **절대** 들어가지 않게 했다. 정수 픽셀 여유 1px 까지 고려한 값이다.
+* 별이 실제로는 이 띠보다 위에 찍히면 개수가 0으로 읽히고, 그 칸은 조용히 3배 틀리는 대신
+  "별을 못 봄 + 1성" + 고지로 떨어진다(안전한 실패). **실게임 별 위치는 여전히 미검증**이다.
+* 띠 기하를 바꾸면 `test_ambiguous_star_is_excluded_not_guessed` 의 `star_side` 값도 다시 골라야 한다(실측 스윕 주석 있음).
+
 숫자도 마찬가지로 **`--digits` 가 없으면 아무것도 읽지 않고 전부 `None` + '손 입력 필요'** 다(0 으로 추정하지 않음). 라운드 표기('4-2')도 같은 템플릿으로 읽으며, **조각이 3개(숫자·구분자·숫자)이고 범위(1~9 / 1~7) 안일 때만** 확정한다(라운드가 틀리면 골드 계획 전체가 어긋나므로).
 
 ### 남은 것
@@ -136,7 +176,7 @@ python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3
 **통과 기준(게이트)**
 1. 내 보드 성급 인식이 **수동 대조와 100% 일치**(20판 표본). 틀린 칸은 조용히 넘기지 말고 "확인 필요"로.
 2. 골드/레벨/HP 숫자 오인식 **0건**(한 자리라도 틀리면 골드 계획이 통째로 틀어짐). 실패 시 그냥 `None`.
-3. 기존 263개 테스트 전부 통과.
+3. 기존 272개 테스트 전부 통과.
 
 > 원칙 유지: 숫자/성급을 못 읽으면 **0이나 추정값을 넣지 말고 `None` + 경고**. "모르면 모른다고 말한다"가 이 프로젝트의 핵심 자산입니다.
 
@@ -157,7 +197,7 @@ python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3
 
 ## 4. 작업 규칙 (지키면 되돌리기 쉬움)
 
-1. **커밋 전**: 해당 테스트 파일 실행 → 전체 263개 `OK` 확인. 깨진 채로 커밋하지 않습니다.
+1. **커밋 전**: 해당 테스트 파일 실행 → 전체 272개 `OK` 확인. 깨진 채로 커밋하지 않습니다.
 2. **미지 데이터 추정 금지**: 모르면 `UnknownOddsError` / `InvalidOddsError` / `UnknownRecipeError`
    / `UnknownLevelError` / `UnknownIncomeError` / `unknown` / `None`.
 3. **4축 분리 유지**: 유닛(풀) · 아이템(부품) · 골드(시간) · 체력(생존)을 하나의 점수로 합치지 않습니다(차원 오류).
@@ -178,8 +218,8 @@ python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3
 
 | 항목 | 값 |
 |---|---|
-| 최신 커밋 | `ce27dd5` (main) — 코드 리뷰 지적사항 전체 수정(버그 8 + 저우선순위 10) |
-| 테스트 | **263개 전부 통과** — pool 39 / comp 18 / items 15 / economy 26 / survival 16 / report 6 / cv 27 / scan 28 / cli 32 / render 20 / rules 8 / trials_defaults 4 / ocr 24 |
+| 최신 커밋 | `dacdf41` (main, origin과 동기화) + §0.5 의 미커밋 작업 |
+| 테스트 | **272개 전부 통과** — pool 39 / comp 18 / items 15 / economy 26 / survival 16 / report 6 / cv 35 / scan 29 / cli 32 / render 20 / rules 8 / trials_defaults 4 / ocr 24 |
 | CLI 명령 | **13개** — `odds selftest unit lobby outlook items plan survive report scan comp sensitivity robustness` |
 | 모듈 | `pool_math` `comp` `items` `economy` `survival` `lobby` `odds` `decision` `set_data` `trials` `render` `rules` `cli` + `cv/{screen,fingerprint,layout,scan,ocr}` |
 | 스크립트 | `build_templates` `check_capture` `crop_slots` `fetch_unit_costs` `fetch_item_recipes` `simulate_scan` |
@@ -188,6 +228,9 @@ python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3
 
 **CV 현재 수준**
 * 캡처(1920×1080 실측) → 지문 분류 → 코스트 조회 → 스냅샷 → 리포트까지 **전 구간 동작**.
-* 실제 Data Dragon 아이콘으로 끝까지 검증: **유사도 95~97%, 이름·코스트 정확**, 빈 칸 자동 분리.
+* 합성 화면(Data Dragon 아이콘을 좌표에 붙임)에서는 **유사도 95~97%, 이름·코스트 정확**, 빈 칸 자동 분리.
 * `scripts\simulate_scan.py`로 게임 없이 언제든 재현 가능(회귀 테스트로 쓰세요).
-* **미구현**: 성급(별), 숫자(골드/레벨/HP) → 위 §2.
+* 창모드 캡처(`--window TFT`) 동작 확인: 클라이언트 2120×1191 캡처 성공.
+* **실게임에서는 아직 인식 0칸** — 상점·벤치 14칸 점수 0.49~0.73(바닥선 0.85 미만) → 좌표 캘리브레이션(§1)이 다음 할 일.
+  부수적으로 **게임 카드 아트 ≠ Data Dragon 정사각 아이콘** 문제도 확인 필요(70%대 유사도의 원인 후보).
+* **미구현**: 실게임 좌표 캘리브레이션(§1), 성급(별)·숫자 실게임 캘리브레이션(§2).

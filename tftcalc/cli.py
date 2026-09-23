@@ -1371,13 +1371,30 @@ def _parse_star_spec(spec: str | None) -> dict[str, int]:
     return stars
 
 
-def _load_or_capture(source: str | None) -> "screen.Image | None":
-    """BMP 가 주어지면 그걸, 아니면 화면 캡처."""
+def _load_or_capture(
+    source: str | None, window: str | None = None
+) -> "screen.Image | None":
+    """BMP 가 있으면 그걸, ``window`` 가 있으면 그 창의 **클라이언트 영역**, 아니면 전체 화면.
+
+    창모드로 게임을 띄우면 전체 화면 캡처에는 게임이 화면 일부만 차지하므로 비율
+    좌표가 어긋난다. ``--window`` 는 클라이언트 영역만 잘라 내므로 비율 좌표가 그대로
+    통한다(16:9 창이면 해상도가 달라도 동일).
+    """
     if source:
         return screen.load_bmp(source)
     if not screen.is_supported():
         print("[오류] 자동 캡처는 Windows(GDI)에서만 됩니다. --in <BMP> 로 테스트하세요.")
         return None
+    if window:
+        image = screen.capture_client(window)
+        if image is None:
+            print(
+                f"[입력 오류] 창을 찾지 못했습니다: '{window}' "
+                "(정확한 제목은 물론 부분 일치도 되지만, 게임이 실행 중인지 확인하세요)"
+            )
+            return None
+        print(f"[캡처] 창 '{window}' 클라이언트 영역 {image.width}x{image.height}")
+        return image
     return screen.capture()
 
 
@@ -1396,6 +1413,7 @@ def _run_scan(
     area: str,
     star_spec: str | None,
     source: str | None,
+    window: str | None = None,
     shop_as_owned: bool = False,
     detect_stars: bool = True,
     digit_templates: "fingerprint.TemplateSet | None" = None,
@@ -1414,7 +1432,7 @@ def _run_scan(
     except FileNotFoundError:
         print("[입력 오류] 유닛 코스트 표를 찾지 못했습니다(data/set18_unit_costs.json).")
         return None
-    image = _load_or_capture(source)
+    image = _load_or_capture(source, window)
     if image is None:
         return None
     return scan_module.scan(
@@ -1436,6 +1454,7 @@ def cmd_scan(args: argparse.Namespace) -> int:
         area=args.area,
         star_spec=args.star,
         source=args.source,
+        window=args.window,
         shop_as_owned=args.shop_as_owned,
         detect_stars=bool(args.star_ocr),
         digit_templates=_load_digit_templates(args),
@@ -1459,6 +1478,7 @@ def _scan_snapshot(args: argparse.Namespace) -> "lobby.LobbySnapshot | None":
         area=getattr(args, "scan_area", "bench,shop"),
         star_spec=getattr(args, "star", None),
         source=getattr(args, "scan_in", None),
+        window=getattr(args, "scan_window", None),
         shop_as_owned=getattr(args, "shop_as_owned", False),
         detect_stars=bool(getattr(args, "star_ocr", False)),
         digit_templates=_load_digit_templates(args),
@@ -1636,6 +1656,11 @@ def build_parser() -> argparse.ArgumentParser:
     rep.add_argument("--costs", default=None, help="유닛 코스트 JSON(--scan 용)")
     rep.add_argument("--scan-area", default="bench,shop", help="스캔 영역(bench,shop,board)")
     rep.add_argument("--scan-in", default=None, help="BMP 입력으로 스캔(게임 없이 테스트)")
+    rep.add_argument(
+        "--scan-window",
+        default=None,
+        help="창 제목(주면 그 창의 클라이언트 영역만 캡처 — 창모드 권장)",
+    )
     rep.add_argument("--scan-out", default=None, help="스캔 결과 스냅샷 저장 경로")
     rep.add_argument("--star", default=None, help="성급 지정 'Ahri=2,Krug=3'")
     rep.add_argument(
@@ -1671,6 +1696,11 @@ def build_parser() -> argparse.ArgumentParser:
     scan_parser.add_argument("--costs", default=None, help="data/set18_unit_costs.json")
     scan_parser.add_argument("--area", default="bench,shop", help="스캔 영역(bench,shop,board)")
     scan_parser.add_argument("--in", dest="source", default=None, help="BMP 입력(없으면 화면 캡처)")
+    scan_parser.add_argument(
+        "--window",
+        default=None,
+        help="창 제목(주면 그 창의 클라이언트 영역만 캡처 — 창모드 권장, 예: --window TFT)",
+    )
     scan_parser.add_argument("--out", default="data/my_board.json")
     scan_parser.add_argument(
         "--keep-opponents", default=None, help="기존 스냅샷(상대 항목 보존)"
