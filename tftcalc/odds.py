@@ -18,6 +18,15 @@ class UnknownOddsError(LookupError):
     """해당 (레벨, 코스트) 상점 확률을 알 수 없을 때 발생."""
 
 
+class InvalidOddsError(ValueError):
+    """확률표 값이 검증에 실패했을 때(범위/합계 오류).
+
+    UnknownOddsError 가 "모른다" 면 이것은 "적혔는데 틀렸다" 다.
+    둘 다 추정으로 메우지 않고 멈춘다 — 300% 나 총합 105% 를 그대로 받아들이면
+    계산기가 정확한 척하는 거짓말을 하게 되기 때문이다.
+    """
+
+
 @dataclass
 class ShopOdds:
     """(level, cost) -> 확률 맵."""
@@ -47,15 +56,39 @@ class ShopOdds:
         값은 퍼센트(30 == 30%)로 적는다.
         """
         base = base or cls.builtin()
+        source_name = Path(path).name
         data = json.loads(Path(path).read_text(encoding="utf-8"))
         cells = dict(base.cells)
         for level_key, row in data.get("odds", {}).items():
             level = int(level_key)
             for cost_key, pct in row.items():
-                cells[(level, int(cost_key))] = float(pct) / 100.0
+                cost = int(cost_key)
+                value = float(pct)
+                if not 0.0 <= value <= 100.0:
+                    raise InvalidOddsError(
+                        f'{source_name}: odds["{level}"]["{cost}"] = {value} 는 0~100 '
+                        "범위를 벗어났다. 값은 퍼센트다(30 == 30%)."
+                    )
+                if 0.0 < value < 1.0:
+                    # 소수로 적으면 100배 작아진다(0.30 -> 0.3%). 명백한 실수 신호.
+                    raise InvalidOddsError(
+                        f'{source_name}: odds["{level}"]["{cost}"] = {value} 는 1% 미만이다. '
+                        "값은 퍼센트(30 == 30%)로 적는다 — 0.30 이면 0.3% 가 되므로 "
+                        "30 으로 쓸 것."
+                    )
+                cells[(level, cost)] = value / 100.0
+
+        # 같은 레벨의 코스트 확률 합은 100% 를 넘지 않는다(부분 표는 허용).
+        for level in sorted({lvl for lvl, _ in cells}):
+            total = sum(p for (lvl, _), p in cells.items() if lvl == level)
+            if total > 1.0 + 1e-9:
+                raise InvalidOddsError(
+                    f"{source_name}: Lv{level} 상점 확률 합계가 {total * 100:.1f}% 로 "
+                    "100% 를 넘는다. 같은 레벨의 코스트 확률은 합쳐서 100% 를 넘지 않는다."
+                )
         return cls(
             cells=cells,
-            source=f"builtin + {Path(path).name}",
+            source=f"builtin + {source_name}",
             patch=data.get("patch"),
         )
 

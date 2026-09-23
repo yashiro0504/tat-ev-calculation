@@ -32,6 +32,7 @@ from pathlib import Path
 from . import pool_math, set_data
 from .lobby import LobbySnapshot
 from .odds import ShopOdds, UnknownOddsError
+from .trials import REPEATED
 
 
 @dataclass(frozen=True)
@@ -155,7 +156,7 @@ def unit_outlook(
     tier_in_play: dict[int, int],
     level: int,
     roll_budget: int,
-    trials: int = 3_000,
+    trials: int = REPEATED,
     seed: int = 31,
 ) -> dict[str, object]:
     """기물 1종의 2성/3성 확률 (격리 계산: 그 기물만 노릴 때).
@@ -239,7 +240,7 @@ def simulate_comp(
     level: int,
     roll_budget: int,
     fixed_gold_cost: int = 0,
-    trials: int = 3_000,
+    trials: int = REPEATED,
     seed: int = 5,
 ) -> dict[str, object]:
     """컴프 동시 완성 시뮬레이션 (같은 골드·같은 상점 5칸을 공유).
@@ -256,13 +257,9 @@ def simulate_comp(
         "level": level,
         "roll_budget": roll_budget,
         "fixed_gold_cost": fixed_gold_cost,
-        "unit_count": len(
-            [
-                unit
-                for unit in comp.units
-                if unit.needed(owned_by_champion.get(unit.champion, 0)) > 0
-            ]
-        ),
+        # 유닛 수 = 컴프 규모(헤더의 '유닛' 열). 이미 보유한 만큼 줄어들지 않는다 —
+        # 줄어들게 하면 '6유닛 덱'이 '4유닛 덱'으로 읽혀 규모 비교가 어긋난다.
+        "unit_count": len(comp.units),
     }
 
     try:
@@ -278,6 +275,12 @@ def simulate_comp(
         for unit in comp.units
         if unit.needed(owned_by_champion.get(unit.champion, 0)) > 0
     ]
+    # 이미 목표 성급에 도달한 유닛. 분해 표에서 조용히 빠지지 않도록 항상 1.0 으로 넣는다.
+    completed = {
+        unit.champion: 1.0
+        for unit in comp.units
+        if unit.needed(owned_by_champion.get(unit.champion, 0)) == 0
+    }
 
     if not targets:
         result.update(
@@ -310,7 +313,12 @@ def simulate_comp(
             mean_roll_gold=0.0,
             mean_purchase_gold=0.0,
             impossible=sorted(impossible),
-            unit_completion={unit.champion: 0.0 for unit in comp.units},
+            # 이미 완성된 유닛은 1.0 — 전부 0.0 으로 치면 완성된 유닛도
+            # '불가'로 보이게 된다.
+            unit_completion={
+                unit.champion: completed.get(unit.champion, 0.0)
+                for unit in comp.units
+            },
         )
         return result
 
@@ -387,8 +395,14 @@ def simulate_comp(
         mean_roll_gold=sum_roll / trials,
         mean_purchase_gold=sum_buy / trials,
         impossible=[],
+        # comp 전체 유닛을 키로 삼는다. targets 만 넣으면 완성된 유닛이
+        # "1위 컴프 분해" 표에서 조용히 빠진다.
         unit_completion={
-            unit.champion: unit_success[unit.champion] / trials for unit in targets
+            **completed,
+            **{
+                unit.champion: unit_success[unit.champion] / trials
+                for unit in targets
+            },
         },
     )
     return result
@@ -407,7 +421,7 @@ def rank_comps(
     current_level: int | None = None,
     levelup_rounds: int = 0,
     extra_fixed_gold_cost: int = 0,
-    trials: int = 3_000,
+    trials: int = REPEATED,
     seed: int = 5,
 ) -> list[dict[str, object]]:
     """컴프들을 (동시 완성 확률 ↑, 기대 총비용 ↓)로 정렬한다.

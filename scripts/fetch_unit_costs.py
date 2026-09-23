@@ -8,9 +8,9 @@
 
 사용법
 ------
-  py -3 scripts/fetch_unit_costs.py --units karma,sentinel,leona
-  py -3 scripts/fetch_unit_costs.py --from-comps data/comps_set18.json
-  py -3 scripts/fetch_unit_costs.py --units karma --dry-run
+  python scripts/fetch_unit_costs.py --units karma,sentinel,leona
+  python scripts/fetch_unit_costs.py --from-comps data/comps_set18.json
+  python scripts/fetch_unit_costs.py --units karma --dry-run
 """
 
 from __future__ import annotations
@@ -98,7 +98,7 @@ def save(path: Path, units: dict[str, dict[str, object]], patch: str | None) -> 
             "이 파일은 scripts/fetch_unit_costs.py 가 생성한다. 손으로 고치지 말 것.",
             "용도: 컴프 JSON 의 units[].cost 를 채우기 전에 실제 값을 확인하는 근거.",
             "컴프(comps_*.json)의 '구성'은 사람이 검토해 확정한다.",
-            "갱신: py -3 scripts/fetch_unit_costs.py --from-comps data/comps_set18.json",
+            "갱신: python scripts/fetch_unit_costs.py --from-comps data/comps_set18.json",
         ],
         "source": SOURCE,
         "patch": patch,

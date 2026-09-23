@@ -25,6 +25,7 @@ import random
 from dataclasses import dataclass, field
 
 from . import economy
+from .trials import HEAVY
 
 STARTING_HP = 100
 
@@ -118,7 +119,7 @@ def simulate_survival(
     enemy_survivors: float = 8.0,
     survivors_sd: float = 2.0,
     pve_damage: int = 0,
-    trials: int = 20_000,
+    trials: int = HEAVY,
     seed: int = 11,
 ) -> SurvivalResult:
     """앞으로 ``rounds`` 라운드 동안의 생존 확률/기대 체력을 시뮬레이션한다."""
@@ -133,9 +134,13 @@ def simulate_survival(
 
     for index, (stage, rnd) in enumerate(sequence):
         kind = economy.round_type(stage, rnd)
-        base = base_damage(stage)
+        # PvP 는 스테이지 기본 피해가 패배에만 붙고, PvE/캐러셀은 pve_damage 만
+        # 적용된다. 표의 '기본피해' 열은 '이 라운드에 실제로 적용되는 기본 값'이어야
+        # 해서, 스테이지 값을 그대로 쓰면 PvE 행에서 모델(피해 0)과 어긋난다.
+        base = base_damage(stage) if kind == economy.PVP else pve_damage
         damage_sum = 0.0
         survivors_sum = 0.0
+        losses_here = 0
         deaths_here = 0
         alive_at_start = 0
         hp_sum = 0.0
@@ -147,6 +152,7 @@ def simulate_survival(
             survivors = 0.0
             if kind == economy.PVP:
                 if rng.random() >= win_rate:  # 패배
+                    losses_here += 1
                     survivors = max(0.0, rng.gauss(enemy_survivors, survivors_sd))
                     damage = base + survivors
             else:
@@ -168,8 +174,14 @@ def simulate_survival(
                 round=rnd,
                 kind=kind,
                 base=base,
+                # 패배 조건부 기대값 — note 의 "패배 시 상대 잔존 유닛 평균" 과
+                # 같은 quantity 여야 표와 설명이 어긋나지 않는다. (승리 시 0 을
+                # 섞어 나누면 8.0 이 4.0 처럼 절반으로 보였다.)
+                # 관측된 패배가 없으면 0 으로 위장하지 않고 모델 가정값을 그대로 쓴다.
                 expected_survivors=(
-                    survivors_sum / alive_at_start if alive_at_start else 0.0
+                    survivors_sum / losses_here
+                    if losses_here
+                    else float(enemy_survivors)
                 ),
                 expected_damage=(damage_sum / alive_at_start if alive_at_start else 0.0),
                 expected_hp=(hp_sum / alive_count if alive_count else 0.0),
@@ -186,7 +198,7 @@ def simulate_survival(
         expected_death_round = economy.format_round(stage, rnd)
 
     notes = [
-        "피해 공식: 스테이지 기본 피해 + 살아남은 상대 유닛 수(1개=1, 성급 무관)",
+        "피해 공식(패배 시): 스테이지 기본 피해 + 살아남은 상대 유닛 수(1개=1, 성급 무관)",
         f"패배 시 상대 잔존 유닛 평균 {enemy_survivors:.1f}(표준편차 {survivors_sd:.1f}) 가정",
         f"승률 {win_rate:.0%} 가정(PvP 라운드만 피해)",
         f"PvE/캐러셀 라운드 피해 {pve_damage} 가정",

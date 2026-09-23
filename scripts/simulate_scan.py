@@ -7,8 +7,8 @@
 
 사용 예
 -------
-  py -3 scripts/simulate_scan.py --units ahri,morgana,sett,krug --out sim_shot.bmp
-  py -3 -m tftcalc.cli scan --templates data/templates_set18.json --in sim_shot.bmp ^
+  python scripts/simulate_scan.py --units ahri,morgana,sett,krug --out sim_shot.bmp
+  python -m tftcalc.cli scan --templates data/templates_set18.json --in sim_shot.bmp ^
       --area shop --out data/sim_board.json
 """
 
@@ -98,7 +98,7 @@ def main(argv: list[str] | None = None) -> int:
 
     screen.save_bmp(canvas, args.out)
     print(f"\n저장: {args.out} ({placed}칸 배치, {layout.BASE_WIDTH}x{layout.BASE_HEIGHT})")
-    print("  -> py -3 -m tftcalc.cli scan --templates data/templates_set18.json "
+    print("  -> python -m tftcalc.cli scan --templates data/templates_set18.json "
           f"--in {args.out} --area {args.area} --out data/sim_board.json")
     if failures:
         print(f"실패 {len(failures)}건:")

@@ -10,6 +10,8 @@
 
 from __future__ import annotations
 
+import inspect
+import json
 import sys
 import tempfile
 import unittest
@@ -189,17 +191,45 @@ class TestLayout(unittest.TestCase):
         for index, name in enumerate(pasted, start=1):
             self.assertEqual(shop_results[f"shop_{index}"], name)
 
-    def test_build_snapshot_shape(self):
-        results = [
-            {"slot": "shop_1", "area": "shop", "name": "Ahri", "score": 0.9, "margin": 0.3,
-             "runner_up": None, "needs_review": False},
-            {"slot": "shop_2", "area": "shop", "name": "unknown", "score": 0.2, "margin": 0.0,
-             "runner_up": None, "needs_review": True},
-        ]
-        snapshot = layout.build_snapshot(results)
-        units = snapshot["players"][0]["board"]
-        self.assertEqual(len(units), 1)  # unknown 은 제외
-        self.assertEqual(units[0]["champion"], "Ahri")
+    def test_override_wrong_count_is_rejected(self):
+        """칸 수가 안 맞으면 일부 칸이 조용히 빠진다 -> 명시적으로 거부.
+
+        Regression: 예전엔 ``boxes[:len(defaults)]`` 로 조용히 잘라서, 오버라이드를
+        한두 칸 빠뜨리면 그 칸이 아예 안 읽혔는데 '인식 실패' 로만 보였다.
+        """
+        with self.assertRaises(ValueError):
+            layout.resolve("shop", {"shop": [[0.1, 0.9, 0.1, 0.09]]})  # 5칸 중 1개
+        with self.assertRaises(ValueError):
+            layout.resolve("bench", {"bench": [[0, 0, 0.05, 0.05]] * 20})  # 9칸 초과
+
+    def test_override_box_must_have_four_values(self):
+        with self.assertRaises(ValueError):
+            layout.resolve("shop", {"shop": [[0.1, 0.9, 0.1]] * 5})  # h 누락
+
+    def test_info_regions_can_be_overridden(self):
+        """골드/레벨/HP 영역도 파일로 보정할 수 있어야 한다(OCR 작업의 전제)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "layout.json"
+            path.write_text(
+                json.dumps({"info": {"gold": [0.06, 0.90, 0.08, 0.05]}}),
+                encoding="utf-8",
+            )
+            merged = layout.resolve_info(layout.load_overrides(path))
+        self.assertEqual(merged["gold"], (0.06, 0.90, 0.08, 0.05))
+        # 미지정 영역은 기본값 유지
+        self.assertEqual(merged["level"], layout.INFO_REGIONS["level"])
+
+    def test_info_regions_unknown_name_rejected(self):
+        with self.assertRaises(ValueError):
+            layout.resolve_info({"info": {"nope": [0.0, 0.0, 1.0, 1.0]}})
+
+    def test_unknown_layout_key_rejected(self):
+        """오타 키가 조용히 무시되지 않는다(좌표 전체 누락 방지)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "layout.json"
+            path.write_text(json.dumps({"shopp": [[0, 0, 1, 1]]}), encoding="utf-8")
+            with self.assertRaises(ValueError):
+                layout.load_overrides(path)
 
 
 class TestRealCapture(unittest.TestCase):
@@ -282,6 +312,49 @@ class TestBuiltTemplates(unittest.TestCase):
                 pixels[offset + 2] = level
                 pixels[offset + 3] = 255
         return screen.Image(width=size, height=size, pixels=pixels)
+
+
+class TestThresholdsComeFromConstants(unittest.TestCase):
+    """분류 문턱이 모듈 상수에서 오고, 그 근거가 문서화돼 있는지(L10)."""
+
+    def test_classify_defaults_reference_module_constants(self):
+        """Regression: 0.5 / 0.05 이 함수 안에 하드코딩돼 근거를 알 수 없었다."""
+        signature = inspect.signature(fingerprint.classify)
+        self.assertEqual(
+            signature.parameters["min_score"].default, fingerprint.MIN_SCORE
+        )
+        self.assertEqual(
+            signature.parameters["review_margin"].default, fingerprint.REVIEW_MARGIN
+        )
+
+    def test_constants_are_in_a_sane_range(self):
+        self.assertGreater(fingerprint.MIN_SCORE, 0.0)
+        self.assertLess(fingerprint.MIN_SCORE, 1.0)
+        self.assertGreater(fingerprint.REVIEW_MARGIN, 0.0)
+        self.assertLess(fingerprint.REVIEW_MARGIN, 1.0)
+
+    def test_min_score_is_a_floor_not_a_verdict(self):
+        """실측상 서로 다른 아이콘도 min_score 를 넘을 수 있다(바닥선일 뿐).
+
+        이 사실을 테스트로 고정해둔다 — 누군가 min_score 를 "오분류 차단 문턱"
+        으로 착각하고 올리면 미검출이 늘어난다.
+        """
+        path = ROOT / "data" / "templates_set18.json"
+        if not path.exists():
+            self.skipTest("templates_set18.json 없음")
+        template_set = fingerprint.TemplateSet.load(path)
+        worst_distinct = 0.0
+        for index, first in enumerate(template_set.templates):
+            for second in template_set.templates[index + 1:]:
+                worst_distinct = max(
+                    worst_distinct,
+                    fingerprint.similarity(first.values, second.values),
+                )
+        self.assertGreater(
+            worst_distinct,
+            fingerprint.MIN_SCORE,
+            "서로 다른 아이콘이 min_score 를 넘지 못하면 이 테스트의 전제가 바뀐 것이다",
+        )
 
 
 if __name__ == "__main__":

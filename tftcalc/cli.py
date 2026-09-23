@@ -17,38 +17,21 @@ from __future__ import annotations
 import argparse
 
 from . import comp as comp_module
-from . import decision, economy, items, lobby, pool_math, set_data, survival
+from . import decision, economy, items, lobby, pool_math, render, rules, set_data, survival
+from .trials import FAST, HEAVY, STANDARD
 from .cv import fingerprint
 from .cv import scan as scan_module
 from .cv import screen
 from .odds import ShopOdds, UnknownOddsError
 
 
-def _pct(value: float) -> str:
-    return f"{value * 100:.1f}%"
-
-
-def _pct_fmt(value: float, width: int = 7) -> str:
-    """확률 표시: 5% 미만은 소수점 2자리로 (0.0% 로 뭉개져 '불가'처럼 보이는 것을 막는다)."""
-    if value <= 0.0:
-        text = "0%"
-    elif value >= 0.995:
-        text = "100%"
-    elif value >= 0.05:
-        text = f"{value * 100:.1f}%"
-    else:
-        text = f"{value * 100:.2f}%"
-    return text.rjust(width)
-
-
-def _gold_fmt(value: object, width: int = 12) -> str:
-    if value in (None,):
-        return "-".rjust(width)
-    return f"{float(value):.1f}g".rjust(width)
-
-
-def _gold(value: float) -> str:
-    return "불가(∞)" if value == float("inf") else f"{value:.1f}골드"
+def _item_input_given(args: argparse.Namespace) -> bool:
+    """아이템 확률을 계산할 만한 입력이 있는지(보유/앞으로/선택 부품)."""
+    return bool(
+        getattr(args, "components", None)
+        or getattr(args, "future_components", 0)
+        or getattr(args, "choice_components", 0)
+    )
 
 
 def build_odds(args: argparse.Namespace) -> ShopOdds:
@@ -76,15 +59,15 @@ def _print_unit_report(report: dict[str, object], confidence_note: str | None) -
         return
 
     print(
-        f"1칸 확률 {_pct(float(report['p_slot']))} / "
-        f"1상점(5칸) 확률 {_pct(float(report['p_shop']))}"
+        f"1칸 확률 {render.pct(float(report['p_slot']))} / "
+        f"1상점(5칸) 확률 {render.pct(float(report['p_shop']))}"
     )
-    print(f"다음 1장까지 기대 리롤 비용: {_gold(float(report['expected_roll_gold_next_copy']))}")
+    print(f"다음 1장까지 기대 리롤 비용: {render.gold(float(report['expected_roll_gold_next_copy']))}")
     print(f"1장을 80% 확률로 보는데 필요한 상점 수: {report['shops_for_80pct_one_copy']}회")
     roll = report.get("roll_down")
     if isinstance(roll, dict):
         print("--- 몬테카를로 롤다운 (구매로 인한 풀 감소 반영) ---")
-        print(f"예산 {roll['budget']}골드 -> 완성 확률 {_pct(float(roll['p_complete']))}")
+        print(f"예산 {roll['budget']}골드 -> 완성 확률 {render.pct(float(roll['p_complete']))}")
         print(
             f"기대 소모: 총 {roll['mean_total_gold']}골드 "
             f"(리롤 {roll['mean_roll_gold']} + 구매 {roll['mean_purchase_gold']}), "
@@ -92,7 +75,7 @@ def _print_unit_report(report: dict[str, object], confidence_note: str | None) -
         )
         if roll["mean_gold_on_success"] is not None:
             print(f"성공했을 때 평균 소모: {roll['mean_gold_on_success']}골드")
-        print(f"풀 고갈로 실패한 비율: {_pct(float(roll['pool_exhausted_rate']))}")
+        print(f"풀 고갈로 실패한 비율: {render.pct(float(roll['pool_exhausted_rate']))}")
         print(f"80% 도달 예산: {report['gold_for_80pct']}골드")
     if confidence_note:
         print(f"[데이터 신뢰도] {confidence_note}")
@@ -166,17 +149,17 @@ def cmd_selftest(args: argparse.Namespace) -> int:  # noqa: ARG001
     remaining_tier = pool_math.remaining_tier_copies(4, 3)
     p_slot = pool_math.p_slot_is_target(0.30, remaining_target, remaining_tier)
     print("=== 벤치마크 재현 (tft.ninja 'Champion Pool Math (Set 18)') ===")
-    print(f"남은 사본 {remaining_target} / 남은 4코 풀 {remaining_tier} -> 1칸 {_pct(p_slot)}")
-    print(f"1상점 확률 {_pct(pool_math.p_shop_at_least_one(p_slot))} (공개값 7.4%)")
+    print(f"남은 사본 {remaining_target} / 남은 4코 풀 {remaining_tier} -> 1칸 {render.pct(p_slot)}")
+    print(f"1상점 확률 {render.pct(pool_math.p_shop_at_least_one(p_slot))} (공개값 7.4%)")
     reference = {20: "54%", 30: "69%", 50: "85%", 60: "90%"}
     for gold in (20, 30, 50, 60):
         probability = pool_math.p_at_least_one_in_shops(
             p_slot, pool_math.shops_for_gold(gold)
         )
-        print(f"  {gold:>3}골드 -> {_pct(probability)} (공개값 {reference[gold]})")
+        print(f"  {gold:>3}골드 -> {render.pct(probability)} (공개값 {reference[gold]})")
     print(
         "다음 1장 기대 리롤 비용: "
-        f"{_gold(pool_math.expected_roll_gold_for_next_copy(p_slot))}"
+        f"{render.gold(pool_math.expected_roll_gold_for_next_copy(p_slot))}"
     )
     return 0
 
@@ -192,12 +175,15 @@ def cmd_sensitivity(args: argparse.Namespace) -> int:
         candidates = [v / 100.0 for v in candidates]
     print(f"=== 민감도: {args.level}레벨 {args.cost}코 확률 후보별 비용 ===")
     print(f"조건: 내 {args.own}장 / 상대 {args.others}장 / 목표 {args.target_star}성")
+    # 한글 헤더는 표시 폭(2칸) 기준으로 맞춘다 — f-string 의 `>8` 은 글자 수라 어긋난다.
+    # '예산내완성' 만 표시 폭 10 이라 이 열만 1칸 넓혔다(데이터도 함께).
     header = (
-        f"{'3코확률':>8} {'남은사본':>8} {'1상점':>7} {'기대리롤':>9} "
-        f"{'예산내완성':>9} {'기대총골드':>10}"
+        f"{render.pad('3코확률', 8, '>')} {render.pad('남은사본', 8, '>')} "
+        f"{render.pad('1상점', 7, '>')} {render.pad('기대리롤', 9, '>')} "
+        f"{render.pad('예산내완성', 10, '>')} {render.pad('기대총골드', 10, '>')}"
     )
     print(header)
-    print("-" * len(header))
+    print("-" * render.disp_len(header))
     for value in candidates:
         odds = ShopOdds(
             cells={(args.level, args.cost): value},
@@ -217,7 +203,7 @@ def cmd_sensitivity(args: argparse.Namespace) -> int:
         if report.get("impossible"):
             print(
                 f"{value * 100:>7.1f}% {report['remaining_target']:>8} "
-                f"{'':>7} {'':>9} {'불가':>9} {'':>10}"
+                f"{'':>7} {'':>9} {render.pad('불가', 10, '>')} {'':>10}"
             )
             continue
         roll = report["roll_down"]
@@ -225,7 +211,7 @@ def cmd_sensitivity(args: argparse.Namespace) -> int:
             f"{value * 100:>7.1f}% {report['remaining_target']:>8} "
             f"{float(report['p_shop']) * 100:>6.1f}% "
             f"{float(report['expected_roll_gold_next_copy']):>8.1f}g "
-            f"{float(roll['p_complete']) * 100:>8.1f}% "
+            f"{float(roll['p_complete']) * 100:>9.1f}% "
             f"{roll['mean_total_gold']:>9.1f}g"
         )
     print()
@@ -277,11 +263,13 @@ def cmd_outlook(args: argparse.Namespace) -> int:
         f"상점 확률 소스: {odds.source}"
     )
     header = (
-        f"{'기물':<14}{'코':>3}{'보유':>5}{'남은':>5}{'1상점':>8}"
-        f"{'2성':>8}{'2성기대골드':>12}{'3성':>8}{'3성기대골드':>12}"
+        f"{render.pad('기물', 14)}{render.pad('코', 3, '>')}{render.pad('보유', 5, '>')}"
+        f"{render.pad('남은', 5, '>')}{render.pad('1상점', 8, '>')}"
+        f"{render.pad('2성', 8, '>')}{render.pad('2성기대골드', 12, '>')}"
+        f"{render.pad('3성', 8, '>')}{render.pad('3성기대골드', 12, '>')}"
     )
     print(header)
-    print("-" * len(header))
+    print("-" * render.disp_len(header))
     for unit in units:
         owned = owned_map.get(unit.champion, 0)
         if copies_in_play.get(unit.champion, 0) == 0:
@@ -306,11 +294,11 @@ def cmd_outlook(args: argparse.Namespace) -> int:
         print(
             f"{unit.champion:<14}{unit.cost:>3}{owned:>5}"
             f"{int(outlook['remaining_target']):>5}"
-            f"{_pct_fmt(float(outlook['p_shop']), 8)}"
-            f"{_pct_fmt(float(outlook['p_star2']), 8)}"
-            f"{_gold_fmt(gold2)}"
-            f"{_pct_fmt(float(outlook['p_star3']), 8)}"
-            f"{_gold_fmt(gold3)}" + (f"  {note}" if note else "")
+            f"{render.pct_fmt(float(outlook['p_shop']), 8)}"
+            f"{render.pct_fmt(float(outlook['p_star2']), 8)}"
+            f"{render.gold_fmt(gold2)}"
+            f"{render.pct_fmt(float(outlook['p_star3']), 8)}"
+            f"{render.gold_fmt(gold3)}" + (f"  {note}" if note else "")
         )
     print()
     print(f"[데이터 신뢰도] {snapshot.confidence_note()}")
@@ -342,7 +330,7 @@ def _load_item_book(args: argparse.Namespace) -> "items.RecipeBook | None":
     except FileNotFoundError:
         print(
             "[아이템 데이터 없음] data/set18_item_recipes.json 이 없습니다. "
-            "py -3 scripts/fetch_item_recipes.py 를 먼저 실행하세요."
+            "python scripts/fetch_item_recipes.py 를 먼저 실행하세요."
         )
         return None
 
@@ -445,6 +433,7 @@ def cmd_comp(args: argparse.Namespace) -> int:
     copies_in_play, tier_in_play = comp_module.pool_state_from_snapshot(snapshot)
     comps = comp_module.load_comps(args.comps)
     book = _load_item_book(args)
+    has_item_input = _item_input_given(args)
 
     count_passive = args.levelup_rounds > 0
     use_gold_total = args.gold is not None
@@ -498,16 +487,22 @@ def cmd_comp(args: argparse.Namespace) -> int:
         "결합 = 유닛 완성확률 x 아이템 확률(두 조건이 모두 성립할 확률, 독립 가정)."
     )
     header = (
-        f"{'순위':>4} {'컴프':<22}{'Lv':>3}{'유닛':>4}{'동시완성':>9}{'아이템':>8}{'결합':>8}"
-        f"{'기대총골드':>10}{'성공시':>9}{'레벨업':>8}{'리롤':>7}{'구매':>7}  비고"
+        f"{render.pad('순위', 4, '>')} {render.pad('컴프', 22)}"
+        f"{render.pad('Lv', 3, '>')}{render.pad('유닛', 4, '>')}"
+        f"{render.pad('동시완성', 9, '>')}{render.pad('아이템', 8, '>')}"
+        f"{render.pad('결합', 8, '>')}"
+        f"{render.pad('기대총골드', 10, '>')}{render.pad('성공시', 9, '>')}"
+        f"{render.pad('레벨업', 8, '>')}{render.pad('리롤', 7, '>')}"
+        f"{render.pad('구매', 7, '>')}  비고"
     )
     print(header)
-    print("-" * len(header))
+    print("-" * render.disp_len(header))
     have = dict(items.parse_component_spec(args.components or ""))
     for index, row in enumerate(ranking, start=1):
         if row.get("error"):
             print(
-                f"{index:>4} {str(row['comp'])[:22]:<22}{'':>3}{'':>4}{'':>9}{'':>8}{'':>8}"
+                f"{index:>4} {render.pad(render.trunc(str(row['comp']), 22), 22)}"
+                f"{'':>3}{'':>4}{'':>9}{'':>8}{'':>8}"
                 f"{'':>10}{'':>9}{'':>8}{'':>7}{'':>7}  [데이터 부족 - 확률표 채우면 계산됨]"
             )
             continue
@@ -529,28 +524,33 @@ def cmd_comp(args: argparse.Namespace) -> int:
             if comp_obj is not None
             else (None, None)
         )
-        item_text, joint_text = "-".rjust(8), "-".rjust(8)
-        if readiness is not None:
-            item_text = _pct_fmt(readiness.p_ready, 8)
-            joint_text = _pct_fmt(
-                float(row["p_complete"]) * readiness.p_ready, 8
-            )
-        elif item_error:
+        item_text, joint_text = render.item_cells(
+            readiness,
+            p_complete=float(row["p_complete"]),
+            has_input=has_item_input,
+        )
+        if item_error:
             note = (note + " " if note else "") + "[조합식 미확인]"
         success_gold = row.get("mean_gold_on_success")
         success_text = (
             f"{float(success_gold):.1f}g" if success_gold is not None else "-"
         )
         print(
-            f"{index:>4} {str(row['comp'])[:22]:<22}{int(row['level']):>3}"
+            f"{index:>4} {render.pad(render.trunc(str(row['comp']), 22), 22)}"
+            f"{int(row['level']):>3}"
             f"{int(row['unit_count']):>4}"
-            f"{_pct_fmt(float(row['p_complete']), 9)}"
+            f"{render.pct_fmt(float(row['p_complete']), 9)}"
             f"{item_text}{joint_text}"
             f"{float(row['mean_total_gold']):>9.1f}g"
             f"{success_text:>9}"
             f"{float(row['levelup_gold']):>7.1f}g"
             f"{float(row['mean_roll_gold']):>6.1f}g"
             f"{float(row['mean_purchase_gold']):>6.1f}g  {note}"
+        )
+    if not has_item_input:
+        print(
+            "  (부품 미입력 -> 아이템 확률 대신 '필요 부품 수'만 표시. "
+            "--components/--future-components 로 확률을 계산한다)"
         )
     print()
     return _print_comp_breakdown(
@@ -613,7 +613,7 @@ def _print_comp_breakdown(
             )
         print(
             f"  {champion:<16} 목표 {unit.target_star if unit else '?'}성  "
-            f"격리 {isolated_text:>7}  ->  동시 {_pct_fmt(float(completion), 7)}"
+            f"격리 {isolated_text:>7}  ->  동시 {render.pct_fmt(float(completion), 7)}"
         )
     print()
     print(
@@ -641,19 +641,28 @@ def cmd_robustness(args: argparse.Namespace) -> int:
         target_star=args.target_star,
         budget=args.budget,
         commit_threshold=args.commit_threshold,
+        tier_in_play=args.tier_in_play,
         trials=args.trials,
     )
     print(f"=== 인식/입력 오차 내성 검사 (상대 보유 ±{scan['tolerance']}장) ===")
     print(
         f"조건: 내 {args.own}장 / {args.cost}코 {args.target_star}성 / "
-        f"Lv{args.level} / 예산 {args.budget}골드"
+        f"Lv{args.level} / 예산 {args.budget}골드 / 등급 소모 {scan['tier_in_play']}장"
     )
+    if scan["tier_assumed"]:
+        # cmd_unit 이 같은 가정을 [가정] 으로 알리는 것과 맞춘다. 오차 내성 검사가
+        # 하는 일이 '가정이 결론을 뒤집는가' 인데, 정작 이 가정은 검사 밖에 있었다.
+        print(
+            "[가정] 같은 코스트의 다른 기물은 아무도 안 들고 있다고 가정했다 "
+            "(등급 소모 = 내 보유 + 상대 보유). --tier-in-play 로 정확히 줄 수 있다."
+        )
     header = (
-        f"{'상대보유':>8} {'남은사본':>8} {'1상점':>7} "
-        f"{'예산내완성':>10} {'기대총골드':>10}  결론"
+        f"{render.pad('상대보유', 8, '>')} {render.pad('남은사본', 8, '>')} "
+        f"{render.pad('1상점', 7, '>')} "
+        f"{render.pad('예산내완성', 10, '>')} {render.pad('기대총골드', 10, '>')}  결론"
     )
     print(header)
-    print("-" * len(header))
+    print("-" * render.disp_len(header))
     for row in scan["rows"]:
         print(
             f"{row['others']:>8} {row['remaining_target']:>8} "
@@ -684,14 +693,22 @@ def cmd_robustness(args: argparse.Namespace) -> int:
 
 def cmd_plan(args: argparse.Namespace) -> int:
     """라운드 수입/롤 타이밍 계획 + (옵션) 그 시점 예산으로 컴프 판정."""
-    stage, rnd = economy.parse_round(args.round)
+    start = economy.parse_round(args.round)
+    target = (
+        economy.parse_round(args.target_round)
+        if args.target_round
+        else economy.round_sequence(start, args.rounds)[-1]
+    )
+    # 목표를 반드시 담도록 길이를 정한다. --rounds 는 최소 길이로 보장된다.
+    horizon = economy.projection_horizon(start, target, args.rounds)
     state = economy.EconomyState(
-        gold=args.gold, level=args.level, streak=args.streak, stage=stage, round=rnd
+        gold=args.gold, level=args.level, streak=args.streak,
+        stage=start[0], round=start[1],
     )
     plans = economy.parse_level_plan(args.levelup) if args.levelup else []
     projection = economy.project(
         state,
-        rounds=args.rounds,
+        rounds=horizon,
         level_plans=plans,
         win_rate=args.win_rate,
         pve_gold=args.pve_gold,
@@ -701,16 +718,21 @@ def cmd_plan(args: argparse.Namespace) -> int:
     print("=== 라운드 수입 / 롤 타이밍 계획 ===")
     print(
         f"현재 {args.round} / {args.gold}골드 / Lv{args.level} / "
-        f"스트릭 {args.streak:+d} / {args.rounds}라운드 전망"
+        f"스트릭 {args.streak:+d} / {horizon}라운드 전망"
     )
     for note in projection.notes:
         print(f"  - {note}")
     header = (
-        f"{'라운드':>6}{'유형':>9}{'기본':>5}{'이자':>5}{'스트릭':>7}{'승리':>6}{'PvE':>5}"
-        f"{'수입':>7}{'레벨업':>7}{'종료골드':>9}{'롤예산':>8}{'레벨':>5}"
+        f"{render.pad('라운드', 6, '>')}{render.pad('유형', 9, '>')}"
+        f"{render.pad('기본', 5, '>')}{render.pad('이자', 5, '>')}"
+        f"{render.pad('스트릭', 7, '>')}{render.pad('승리', 6, '>')}"
+        f"{render.pad('PvE', 5, '>')}"
+        f"{render.pad('수입', 7, '>')}{render.pad('레벨업', 7, '>')}"
+        f"{render.pad('종료골드', 9, '>')}{render.pad('롤예산', 8, '>')}"
+        f"{render.pad('레벨', 5, '>')}"
     )
     print(header)
-    print("-" * len(header))
+    print("-" * render.disp_len(header))
     for row in projection.rounds:
         print(
             f"{economy.format_round(row.stage, row.round):>6}{row.kind:>9}"
@@ -727,16 +749,12 @@ def cmd_plan(args: argparse.Namespace) -> int:
         f"최종 {summary['gold_end']}골드 Lv{summary['level_end']}"
     )
 
-    target = (
-        economy.parse_round(args.target_round)
-        if args.target_round
-        else (projection.rounds[-1].stage, projection.rounds[-1].round)
-    )
     row = projection.at(*target)
     if row is None:
+        # economy.projection_horizon 이 목표를 담도록 보장하므로 사실상 도달 불가다.
         print(
-            f"\n[목표 라운드] {economy.format_round(*target)} 는 전망 범위 밖입니다. "
-            f"--rounds 를 늘리세요."
+            f"\n[목표 라운드] {economy.format_round(*target)} 는 전망({horizon}라운드)에 "
+            "없다. --rounds 를 늘리세요."
         )
         return 0
     print(
@@ -774,6 +792,7 @@ def _plan_comp_check(
     copies_in_play, tier_in_play = comp_module.pool_state_from_snapshot(snapshot)
     comps = comp_module.load_comps(args.comps)
     book = _load_item_book(args)
+    has_item_input = _item_input_given(args)
 
     print(
         f"\n=== {economy.format_round(*target)} 예산 {row.roll_budget}골드로 컴프 판정 "
@@ -793,13 +812,16 @@ def _plan_comp_check(
     )
     have = dict(items.parse_component_spec(args.components or ""))
     header = (
-        f"{'순위':>4} {'컴프':<22}{'Lv':>3}{'유닛':>4}{'동시완성':>9}{'아이템':>8}{'결합':>8}  비고"
+        f"{render.pad('순위', 4, '>')} {render.pad('컴프', 22)}"
+        f"{render.pad('Lv', 3, '>')}{render.pad('유닛', 4, '>')}"
+        f"{render.pad('동시완성', 9, '>')}{render.pad('아이템', 8, '>')}"
+        f"{render.pad('결합', 8, '>')}  비고"
     )
     print(header)
-    print("-" * len(header))
+    print("-" * render.disp_len(header))
     for index, comp_row in enumerate(ranking, start=1):
         if comp_row.get("error"):
-            print(f"{index:>4} {str(comp_row['comp'])[:22]:<22}  [데이터 부족]")
+            print(f"{index:>4} {render.pad(render.trunc(str(comp_row['comp']), 22), 22)}  [데이터 부족]")
             continue
         comp_obj = comps_by_name(comps, str(comp_row["comp"]))
         readiness, _ = (
@@ -814,18 +836,19 @@ def _plan_comp_check(
             if comp_obj is not None
             else (None, None)
         )
-        item_text = "-".rjust(8)
-        joint_text = "-".rjust(8)
-        if readiness is not None:
-            item_text = _pct_fmt(readiness.p_ready, 8)
-            joint_text = _pct_fmt(float(comp_row["p_complete"]) * readiness.p_ready, 8)
+        item_text, joint_text = render.item_cells(
+            readiness,
+            p_complete=float(comp_row["p_complete"]),
+            has_input=has_item_input,
+        )
         note = ""
         if comp_row["impossible"]:
             note = f"[불가] 풀 부족: {', '.join(comp_row['impossible'])}"
         print(
-            f"{index:>4} {str(comp_row['comp'])[:22]:<22}{int(comp_row['level']):>3}"
+            f"{index:>4} {render.pad(render.trunc(str(comp_row['comp']), 22), 22)}"
+            f"{int(comp_row['level']):>3}"
             f"{int(comp_row['unit_count']):>4}"
-            f"{_pct_fmt(float(comp_row['p_complete']), 9)}"
+            f"{render.pct_fmt(float(comp_row['p_complete']), 9)}"
             f"{item_text}{joint_text}  {note}"
         )
     print(
@@ -842,13 +865,9 @@ def cmd_survive(args: argparse.Namespace) -> int:
         if args.target_round
         else economy.round_sequence(start, args.rounds)[-1]
     )
-    # 목표 라운드까지의 라운드 수
-    needed = 0
-    for index, item in enumerate(economy.round_sequence(start, 30)):
-        if item == target:
-            needed = index + 1
-            break
-    horizon = max(1, needed or args.rounds)
+    # 목표 라운드까지의 라운드 수(범위 밖이면 오류). 예전의 30/40 마법 숫자 두개를
+    # economy.rounds_between(MAX_HORIZON) 한곳으로 모았다.
+    horizon = economy.projection_horizon(start, target, args.rounds)
 
     print("=== 체력/피해(생존) 분석 ===")
     print(
@@ -873,16 +892,17 @@ def cmd_survive(args: argparse.Namespace) -> int:
     for note in result.notes:
         print(f"  - {note}")
     header = (
-        f"{'라운드':>6}{'유형':>9}{'기본피해':>9}{'기대피해':>9}"
-        f"{'기대체력':>9}{'생존확률':>9}"
+        f"{render.pad('라운드', 6, '>')}{render.pad('유형', 9, '>')}"
+        f"{render.pad('기본피해', 9, '>')}{render.pad('기대피해', 9, '>')}"
+        f"{render.pad('기대체력', 9, '>')}{render.pad('생존확률', 9, '>')}"
     )
     print(header)
-    print("-" * len(header))
+    print("-" * render.disp_len(header))
     for row in result.rounds:
         print(
             f"{economy.format_round(row.stage, row.round):>6}{row.kind:>9}"
             f"{row.base:>9}{row.expected_damage:>9.1f}"
-            f"{row.expected_hp:>9.1f}{_pct_fmt(row.p_alive, 9)}"
+            f"{row.expected_hp:>9.1f}{render.pct_fmt(row.p_alive, 9)}"
         )
     summary = result.summary()
     print(
@@ -903,6 +923,7 @@ def cmd_survive(args: argparse.Namespace) -> int:
             spend_now=0,
             args=args,
             start=start,
+            target=target,
             horizon=horizon,
             trials=args.trials,
         )
@@ -912,6 +933,7 @@ def cmd_survive(args: argparse.Namespace) -> int:
             spend_now=args.roll_gold,
             args=args,
             start=start,
+            target=target,
             horizon=horizon,
             trials=args.trials,
         )
@@ -940,10 +962,16 @@ def _strategy_outcome(
     spend_now: int,
     args: argparse.Namespace,
     start: tuple[int, int],
+    target: tuple[int, int],
     horizon: int,
     trials: int,
 ) -> "survival.StrategyOutcome":
-    """전략 하나의 (생존확률, 목표 라운드 골드)를 계산한다."""
+    """전략 하나의 (**목표 라운드** 생존확률, 목표 라운드 골드)를 계산한다.
+
+    지표는 항상 목표 라운드 기준이어야 한다. ``horizon`` 은 ``--rounds`` 때문에
+    목표보다 길어질 수 있는데, 그때 ``rounds[-1]`` 을 쓰면 목표가 아닌 라운드의
+    값을 "목표 시점" 라벨로 표시하게 된다(필드명이 ``gold_at_target`` 인데도).
+    """
     result = survival.simulate_survival(
         args.hp,
         start,
@@ -969,22 +997,23 @@ def _strategy_outcome(
         win_rate=win_rate,
         pve_gold=args.pve_gold,
     )
+    target_row = projection.at(*target)
+    survival_row = next(
+        (row for row in result.rounds if (row.stage, row.round) == target), None
+    )
+    if target_row is None or survival_row is None:
+        # economy.projection_horizon 이 목표를 담도록 보장하므로 사실상 도달 불가다.
+        raise ValueError(
+            f"목표 라운드 {economy.format_round(*target)} 가 전망({horizon}라운드)에 없다."
+        )
     return survival.StrategyOutcome(
         name=name,
         win_rate=win_rate,
         spend_now=spend_now,
-        p_survive=result.rounds[-1].p_alive,
-        expected_hp=result.rounds[-1].expected_hp,
-        gold_at_target=projection.rounds[-1].gold_end,
+        p_survive=survival_row.p_alive,
+        expected_hp=survival_row.expected_hp,
+        gold_at_target=target_row.gold_end,
     )
-
-
-def _rounds_between(start: tuple[int, int], target: tuple[int, int], fallback: int) -> int:
-    """start -> target 까지의 라운드 수(목표가 범위 밖이면 fallback)."""
-    for index, item in enumerate(economy.round_sequence(start, 40)):
-        if item == target:
-            return index + 1
-    return fallback
 
 
 def cmd_report(args: argparse.Namespace) -> int:
@@ -995,7 +1024,7 @@ def cmd_report(args: argparse.Namespace) -> int:
         if args.target_round
         else economy.round_sequence(start, args.rounds)[-1]
     )
-    horizon = _rounds_between(start, target, args.rounds)
+    horizon = economy.projection_horizon(start, target, args.rounds)
     target_label = economy.format_round(*target)
 
     print("=" * 74)
@@ -1041,9 +1070,14 @@ def cmd_report(args: argparse.Namespace) -> int:
         pve_gold=args.pve_gold,
     )
     print(f"\n[2] 골드 전망: {args.round} -> {target_label} (승률 {args.win_rate:.0%} 가정)")
-    header = f"{'라운드':>7}{'유형':>9}{'수입':>7}{'레벨업':>7}{'종료골드':>9}{'롤예산':>8}{'레벨':>5}"
+    header = (
+        f"{render.pad('라운드', 7, '>')}{render.pad('유형', 9, '>')}"
+        f"{render.pad('수입', 7, '>')}{render.pad('레벨업', 7, '>')}"
+        f"{render.pad('종료골드', 9, '>')}{render.pad('롤예산', 8, '>')}"
+        f"{render.pad('레벨', 5, '>')}"
+    )
     print(header)
-    print("-" * len(header))
+    print("-" * render.disp_len(header))
     for row in projection.rounds:
         print(
             f"{economy.format_round(row.stage, row.round):>7}{row.kind:>9}"
@@ -1067,18 +1101,33 @@ def cmd_report(args: argparse.Namespace) -> int:
         trials=args.trials,
     )
     print(f"\n[3] 생존 전망 (피해 = 기본 {start[0]}스테이지 {survival.base_damage(start[0])} + 잔존 유닛)")
-    header = f"{'라운드':>7}{'유형':>9}{'기대피해':>9}{'기대체력':>9}{'생존확률':>9}"
+    header = (
+        f"{render.pad('라운드', 7, '>')}{render.pad('유형', 9, '>')}"
+        f"{render.pad('기대피해', 9, '>')}{render.pad('기대체력', 9, '>')}"
+        f"{render.pad('생존확률', 9, '>')}"
+    )
     print(header)
-    print("-" * len(header))
+    print("-" * render.disp_len(header))
     for row in surv.rounds:
         print(
             f"{economy.format_round(row.stage, row.round):>7}{row.kind:>9}"
-            f"{row.expected_damage:>9.1f}{row.expected_hp:>9.1f}{_pct_fmt(row.p_alive, 9)}"
+            f"{row.expected_damage:>9.1f}{row.expected_hp:>9.1f}{render.pct_fmt(row.p_alive, 9)}"
         )
-    p_survive_target = surv.p_alive_at(*target) or 0.0
+    target_survival = next(
+        (row for row in surv.rounds if (row.stage, row.round) == target), None
+    )
+    if target_survival is None:
+        # economy.projection_horizon 이 목표를 담도록 보장하므로 사실상 도달 불가다.
+        # 예전엔 `p_alive_at(*target) or 0.0` 이라서 목표가 범위 밖이면
+        # "생존확률 0.0%" 라는 거짓이, 그리고 다음 줄의 `rounds[-1]` 은 horizon
+        # 마지막 라운드의 값을 목표 라벨로 보여줬다.
+        raise ValueError(
+            f"목표 {target_label} 가 생존 전망({horizon}라운드)에 없다. --rounds 를 늘리세요."
+        )
+    p_survive_target = target_survival.p_alive
     print(
         f"  -> {target_label} 생존확률 {p_survive_target * 100:.1f}% "
-        f"(기대 체력 {surv.rounds[-1].expected_hp:.1f}HP)"
+        f"(기대 체력 {target_survival.expected_hp:.1f}HP)"
     )
     return _report_decision(
         args,
@@ -1106,6 +1155,7 @@ def _report_decision(
     """[4] 컴프 판정 + [5] 권장 동선 + [6] 불확실성."""
     target_label = economy.format_round(*target)
     book = _load_item_book(args)
+    has_item_input = _item_input_given(args)
     ranking: list[dict[str, object]] | None = None
     odds_source = "?"
     best: dict[str, object] | None = None
@@ -1131,12 +1181,16 @@ def _report_decision(
             f"\n[4] 컴프 판정: {target_label} 예산 {target_row.roll_budget}골드 / "
             f"Lv{target_row.target_level} / 상점 확률 소스 {odds_source}"
         )
-        header = f"{'순위':>4} {'컴프':<22}{'유닛':>4}{'동시완성':>9}{'아이템':>8}{'결합':>8}  비고"
+        header = (
+            f"{render.pad('순위', 4, '>')} {render.pad('컴프', 22)}"
+            f"{render.pad('유닛', 4, '>')}{render.pad('동시완성', 9, '>')}"
+            f"{render.pad('아이템', 8, '>')}{render.pad('결합', 8, '>')}  비고"
+        )
         print(header)
-        print("-" * len(header))
+        print("-" * render.disp_len(header))
         for index, row in enumerate(ranking[: args.top], start=1):
             if row.get("error"):
-                print(f"{index:>4} {str(row['comp'])[:22]:<22}  [데이터 부족]")
+                print(f"{index:>4} {render.pad(render.trunc(str(row['comp']), 22), 22)}  [데이터 부족]")
                 continue
             comp_obj = comps_by_name(comps, str(row["comp"]))
             readiness, _ = (
@@ -1151,21 +1205,20 @@ def _report_decision(
                 if comp_obj is not None
                 else (None, None)
             )
-            item_text = "-".rjust(8)
-            joint_text = "-".rjust(8)
-            if readiness is not None and have:
-                item_text = _pct_fmt(readiness.p_ready, 8)
-                joint_text = _pct_fmt(float(row["p_complete"]) * readiness.p_ready, 8)
-            elif readiness is not None:
-                item_text = f"{sum(readiness.required.values())}부품".rjust(8)
+            item_text, joint_text = render.item_cells(
+                readiness,
+                p_complete=float(row["p_complete"]),
+                has_input=has_item_input,
+            )
             note = ""
             if row["impossible"]:
                 note = f"[불가] 풀 부족: {', '.join(row['impossible'])}"
             print(
-                f"{index:>4} {str(row['comp'])[:22]:<22}{int(row['unit_count']):>4}"
-                f"{_pct_fmt(float(row['p_complete']), 9)}{item_text}{joint_text}  {note}"
+                f"{index:>4} {render.pad(render.trunc(str(row['comp']), 22), 22)}"
+                f"{int(row['unit_count']):>4}"
+                f"{render.pct_fmt(float(row['p_complete']), 9)}{item_text}{joint_text}  {note}"
             )
-        if have:
+        if has_item_input:
             print("  (아이템 = 지금+앞으로 부품으로 코어 아이템 완성 확률, 결합 = 유닛 x 아이템)")
         else:
             print("  (부품 미입력 -> 아이템 확률 대신 '필요 부품 수'만 표시)")
@@ -1174,6 +1227,7 @@ def _report_decision(
         print("\n[4] 컴프 판정: 스냅샷(--snapshot) 또는 컴프(--comps) 없음 -> 생략")
     return _report_action(
         args,
+        target=target,
         target_label=target_label,
         target_row=target_row,
         p_survive_target=p_survive_target,
@@ -1189,6 +1243,7 @@ def _report_decision(
 def _report_action(
     args: argparse.Namespace,
     *,
+    target: tuple[int, int],
     target_label: str,
     target_row: "economy.RoundProjection",
     p_survive_target: float,
@@ -1208,6 +1263,7 @@ def _report_action(
             spend_now=0,
             args=args,
             start=start,
+            target=target,
             horizon=horizon,
             trials=args.trials,
         )
@@ -1217,6 +1273,7 @@ def _report_action(
             spend_now=args.roll_gold,
             args=args,
             start=start,
+            target=target,
             horizon=horizon,
             trials=args.trials,
         )
@@ -1224,42 +1281,25 @@ def _report_action(
             save=save_outcome, stabilize=stabilize_outcome
         )
 
-    basis = [
-        f"{target_label} 리롤 예산 {target_row.roll_budget}골드 / Lv{target_row.target_level}",
-        f"{target_label} 생존확률 {p_survive_target * 100:.1f}%",
-    ]
-    if best is not None:
-        basis.append(
-            f"1순위 컴프 {best['comp']}: 유닛 완성 {float(best['p_complete']) * 100:.1f}%"
-        )
-    if args.need_gold:
-        basis.append(f"필요 골드 {args.need_gold} vs 예산 {target_row.roll_budget}")
-    if comparison is not None:
-        basis.append(
-            f"세이빙 생존 {comparison.outcomes[0].p_survive * 100:.1f}% vs "
-            f"롤 생존 {comparison.outcomes[1].p_survive * 100:.1f}%"
-        )
-
-    if (
-        comparison is not None
-        and comparison.outcomes[1].p_survive - comparison.outcomes[0].p_survive > 0.1
-        and comparison.outcomes[0].p_survive < 0.5
-    ):
-        action = (
-            f"지금 안정화(롤 {args.roll_gold}골드) 우선 — 생존확률이 "
-            f"{comparison.outcomes[0].p_survive * 100:.0f}% -> "
-            f"{comparison.outcomes[1].p_survive * 100:.0f}% 로 오른다"
-        )
-    elif args.need_gold and target_row.roll_budget < args.need_gold:
-        action = (
-            f"세이빙 연장 또는 목표 하향 — {args.need_gold - target_row.roll_budget}골드 부족"
-        )
-    elif best is not None and float(best["p_complete"]) >= 0.5:
-        action = f"{target_label}에 계획대로 리롤 (1순위: {best['comp']})"
-    elif p_survive_target < 0.4:
-        action = "체력 리스크 큼 — 안정화 우선 또는 목표 라운드 앞당김"
-    else:
-        action = "관망 — 세이빙 유지하고 다음 라운드에 재평가"
+    # 판정과 근거는 rules.py 에 산다(순수 함수라 단독 테스트가 된다).
+    basis = rules.build_basis(
+        target_label=target_label,
+        roll_budget=target_row.roll_budget,
+        target_level=target_row.target_level,
+        p_survive_target=p_survive_target,
+        best=best,
+        need_gold=args.need_gold,
+        comparison=comparison,
+    )
+    action = rules.recommend_action(
+        target_label=target_label,
+        roll_gold=args.roll_gold,
+        need_gold=args.need_gold,
+        roll_budget=target_row.roll_budget,
+        p_survive_target=p_survive_target,
+        best=best,
+        comparison=comparison,
+    )
 
     print(f"\n[5] 권장 동선(규칙 기반): {action}")
     for line in basis:
@@ -1314,7 +1354,7 @@ def _run_scan(
     if not templates_path:
         print(
             "[입력 오류] --templates 가 필요합니다. "
-            "py -3 scripts/build_templates.py --from-comps data/comps_set18.json 로 생성하세요."
+            "python scripts/build_templates.py --from-comps data/comps_set18.json 로 생성하세요."
         )
         return None
     template_set = fingerprint.TemplateSet.load(templates_path)
@@ -1346,7 +1386,7 @@ def cmd_scan(args: argparse.Namespace) -> int:
     snapshot = scan_module.merge_with_opponents(report.snapshot, args.keep_opponents)
     scan_module.write_snapshot(snapshot, args.out)
     print(f"\n저장: {args.out}")
-    print(f"  -> 이 파일로 계산: py -3 -m tftcalc.cli report --snapshot {args.out} ...")
+    print(f"  -> 이 파일로 계산: python -m tftcalc.cli report --snapshot {args.out} ...")
     return 0
 
 
@@ -1371,13 +1411,18 @@ def _scan_snapshot(args: argparse.Namespace) -> "lobby.LobbySnapshot | None":
     return lobby.LobbySnapshot.from_dict(merged)
 
 
-def main(argv: list[str] | None = None) -> int:
+def build_parser() -> argparse.ArgumentParser:
+    """CLI 파서를 만든다.
+
+    ``main`` 에서 분리한 이유: 테스트가 아규먼트 기본값(예: ``--trials`` 가
+    ``trials.py`` 상수를 쓰는지)을 직접 검사할 수 있게 하기 위해서다.
+    """
     parser = argparse.ArgumentParser(prog="tftcalc", description="TFT 기회비용 계산기")
     sub = parser.add_subparsers(dest="command", required=True)
 
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--odds-file", default=None, help="data/set18_shop_odds.json 등")
-    common.add_argument("--trials", type=int, default=4_000, help="몬테카를로 시행 수")
+    common.add_argument("--trials", type=int, default=STANDARD, help="몬테카를로 시행 수")
 
     odds_parser = sub.add_parser("odds", parents=[common], help="아는 상점 확률 셀 출력")
     odds_parser.set_defaults(func=cmd_odds)
@@ -1466,7 +1511,7 @@ def main(argv: list[str] | None = None) -> int:
     plan_parser.add_argument("--snapshot", default=None)
     plan_parser.add_argument("--odds-file", default=None)
     plan_parser.add_argument("--recipes", default=None)
-    plan_parser.add_argument("--trials", type=int, default=1_500)
+    plan_parser.add_argument("--trials", type=int, default=FAST)
     plan_parser.add_argument("--components", default=None, help="보유 부품(예: 'rod:2,gloves')")
     plan_parser.add_argument("--future-components", type=int, default=0)
     plan_parser.add_argument("--choice-components", type=int, default=0)
@@ -1496,7 +1541,7 @@ def main(argv: list[str] | None = None) -> int:
         "--win-rate-roll", type=float, default=0.6, help="롤 후 승률 가정(전략 비교)"
     )
     survive_parser.add_argument("--pve-gold", type=int, default=economy.DEFAULT_PVE_GOLD)
-    survive_parser.add_argument("--trials", type=int, default=20_000)
+    survive_parser.add_argument("--trials", type=int, default=HEAVY)
     survive_parser.set_defaults(func=cmd_survive)
 
     rep = sub.add_parser(
@@ -1536,7 +1581,7 @@ def main(argv: list[str] | None = None) -> int:
     rep.add_argument("--choice-components", type=int, default=0)
     rep.add_argument("--core-items-limit", type=int, default=3)
     rep.add_argument("--top", type=int, default=3, help="컴프 랭킹에서 상위 몇 개를 보여줄지")
-    rep.add_argument("--trials", type=int, default=1_500)
+    rep.add_argument("--trials", type=int, default=FAST)
     rep.set_defaults(func=cmd_report)
 
     scan_parser = sub.add_parser(
@@ -1638,6 +1683,12 @@ def main(argv: list[str] | None = None) -> int:
     rob.add_argument("--own", type=int, required=True)
     rob.add_argument("--others", type=int, required=True, help="내가 센 상대 보유 장수")
     rob.add_argument("--tolerance", type=int, default=1, help="오차 가정(±n장)")
+    rob.add_argument(
+        "--tier-in-play",
+        type=int,
+        default=None,
+        help="해당 코스트 등급 전체 소모 사본 수(모르면 내+상대로 가정하고 [가정] 표시)",
+    )
     rob.add_argument("--target-star", type=int, default=2, choices=[1, 2, 3])
     rob.add_argument("--budget", type=int, default=60)
     rob.add_argument(
@@ -1648,12 +1699,22 @@ def main(argv: list[str] | None = None) -> int:
     )
     rob.set_defaults(func=cmd_robustness)
 
-    args = parser.parse_args(argv)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
     try:
         return int(args.func(args) or 0)
-    except UnknownOddsError as exc:
+    except (UnknownOddsError, items.UnknownRecipeError, set_data.UnknownLevelError) as exc:
         # 모르는 값을 추정하지 않고 멈춘다. 사용자에게 무엇을 채워야 하는지 알려준다.
         print(f"[데이터 부족] {exc}")
+        return 2
+    except (ValueError, KeyError) as exc:
+        # 사용자 입력/데이터 파일 오류(라운드 형식·부품 키·없는 챔피언·범위 밖 목표
+        # 등)도 스택 트레이스가 아니라 안내로 바꾼다. 같은 카테고리의 오류를
+        # UnknownOddsError 만 친절하게 다루던 예전과의 불일치를 없애기 위해서다.
+        print(f"[입력 오류] {exc}")
         return 2
 
 

@@ -8,9 +8,9 @@
 
 사용법
 ------
-  py -3 scripts/fetch_item_recipes.py                 # 제작 가능 아이템 전체
-  py -3 scripts/fetch_item_recipes.py --only jeweled-gauntlet,blue-buff
-  py -3 scripts/fetch_item_recipes.py --check "Jeweled Gauntlet,Blue Buff"
+  python scripts/fetch_item_recipes.py                 # 제작 가능 아이템 전체
+  python scripts/fetch_item_recipes.py --only jeweled-gauntlet,blue-buff
+  python scripts/fetch_item_recipes.py --check "Jeweled Gauntlet,Blue Buff"
 """
 
 from __future__ import annotations
@@ -307,7 +307,7 @@ def save(path: Path, recipes: dict[str, dict[str, object]], version: str) -> Non
             "이 파일은 scripts/fetch_item_recipes.py 가 생성한다. 손으로 고치지 말 것.",
             "components = 그 아이템을 만드는 부품 2개. 부품 수급 계산의 기반 데이터.",
             "'부품 2개 조합'이 아닌 아이템(유물/상징/찬란한 등)은 의도적으로 제외된다.",
-            "갱신: py -3 scripts/fetch_item_recipes.py",
+            "갱신: python scripts/fetch_item_recipes.py",
         ],
         "source": SOURCE,
         "data_dragon_version": version,

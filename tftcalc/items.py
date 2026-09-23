@@ -22,9 +22,11 @@ from __future__ import annotations
 import json
 import random
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping
+
+from .trials import HEAVY
 
 DEFAULT_RECIPES = Path(__file__).resolve().parents[1] / "data" / "set18_item_recipes.json"
 
@@ -61,11 +63,14 @@ class RecipeBook:
     recipes: dict[str, list[str]]
     component_names: list[str]
     source: str
+    #: 이름 정규화 인덱스(아포스트로피/공백/대소문자 무시). ``__post_init__`` 에서 채운다.
+    #: 필드로 선언하지 않으면 타입 체커가 "선언 안 된 속성"으로 잡는다.
+    by_normalized: dict[str, str] = field(init=False, default_factory=dict)
 
     def __post_init__(self) -> None:
         # 아이템 이름 표기가 출처마다 다르다(tft.ninja 'Warmogs Armor' vs 한국어 자료 'Warmog's Armor').
         # 그래서 아포스트로피/공백/대소문자를 무시한 정규화 인덱스를 함께 만든다.
-        self.by_normalized: dict[str, str] = {
+        self.by_normalized = {
             normalize_item_name(name): name for name in self.recipes
         }
 
@@ -165,7 +170,7 @@ def p_ready_after(
     *,
     future_components: int = 0,
     choice_components: int = 0,
-    trials: int = 20_000,
+    trials: int = HEAVY,
     seed: int = 7,
     pool: tuple[str, ...] = RANDOM_POOL,
 ) -> tuple[float, float]:
@@ -214,7 +219,7 @@ def analyze_items(
     have: Mapping[str, int] | None = None,
     future_components: int = 0,
     choice_components: int = 0,
-    trials: int = 20_000,
+    trials: int = HEAVY,
     seed: int = 7,
 ) -> ItemReadiness:
     """코어 아이템 요구량/부족분/확률/부품 우선순위를 한 번에 계산한다."""

@@ -58,23 +58,99 @@ def round_type(stage: int, rnd: int) -> str:
     return PVP
 
 
+#: 스테이지별 라운드 수. 스테이지 1 은 1-1~1-4 (4라운드), 2 부터는 7라운드.
+STAGE_LENGTHS: dict[int, int] = {1: 4}
+DEFAULT_STAGE_LENGTH = 7
+
+
+def stage_length(stage: int) -> int:
+    """그 스테이지의 라운드 수(스테이지 1 = 4, 나머지 = 7)."""
+    return STAGE_LENGTHS.get(stage, DEFAULT_STAGE_LENGTH)
+
+
 def round_sequence(start: tuple[int, int], count: int) -> list[tuple[int, int]]:
-    """(stage, round) 를 count 개 나열한다. 스테이지는 7라운드로 끝난다."""
+    """(stage, round) 를 count 개 나열한다.
+
+    스테이지 1 은 4라운드(1-1~1-4)로 끝나고 2 부터는 7라운드다.
+
+    Regression: 예전엔 전 스테이지를 7라운드로 봐서 ``(1,5)(1,6)(1,7)`` 같은
+    존재하지 않는 라운드를 만들었고, ``base_income`` 은 ``base_income(1,5)=5`` 처럼
+    그 라운드에도 기본 수입을 줬다.
+    """
     stage, rnd = start
     out: list[tuple[int, int]] = []
     while len(out) < count:
         out.append((stage, rnd))
         rnd += 1
-        if rnd > 7:
+        if rnd > stage_length(stage):
             rnd = 1
             stage += 1
     return out
 
 
+#: 전망/판정이 목표 라운드를 담을 수 있게 하는 최대 라운드 수. 초과하면 오류로 알린다.
+#: (예전엔 이 검색 상한이 한 군데는 30, 다른 한 군데는 40으로 두 곳에 하드코딩돼 있었다.)
+MAX_HORIZON = 40
+
+
+def rounds_between(
+    start: tuple[int, int], target: tuple[int, int], *, max_rounds: int = MAX_HORIZON
+) -> int:
+    """start -> target 까지의 라운드 수. 범위 밖(또는 과거)이면 ValueError.
+
+    예전에는 못 찾으면 ``fallback`` 으로 조용히 대체했는데, 그 결과
+    ``--target-round 11-1`` 로 지정해도 4-1~4-6 전망을 보고 판정을 읽는 오류가
+    났다. 모르는 값은 모르다고 말하는 이 프로젝트의 원칙에 따라 오류로 바꿨다.
+    """
+    for index, item in enumerate(round_sequence(start, max_rounds), start=1):
+        if item == target:
+            return index
+    raise ValueError(
+        f"목표 라운드 {format_round(*target)} 가 현재 {format_round(*start)} 부터 "
+        f"{max_rounds}라운드 안에 들어오지 않는다(범위 밖이거나 과거 라운드). "
+        "--rounds 를 늘리거나 목표를 다시 확인하세요."
+    )
+
+
+def projection_horizon(
+    start: tuple[int, int],
+    target: tuple[int, int],
+    rounds: int,
+    *,
+    max_rounds: int = MAX_HORIZON,
+) -> int:
+    """전망 길이: ``--rounds`` 와 목표 도달에 필요한 길이 중 큰 값.
+
+    목표가 가까워도 ``--rounds`` 만큼은 보여주고, 멀면 목표까지 늘린다. 덕분에
+    목표 기준 지표(생존확률·목표 시점 골드)가 항상 목표를 담는다.
+    """
+    return max(rounds, rounds_between(start, target, max_rounds=max_rounds))
+
+
+class UnknownIncomeError(LookupError):
+    """라운드 기본 수입을 출처에서 확인하지 못했다(추정 금지).
+
+    ``odds.UnknownOddsError`` 와 같은 원칙: 모르는 값은 넣지 않고 예외로 멈춘다.
+    1-1 에 기본 수입 5 를 넣어 둔 채 놔두면 1-1 부터 시작하는 전망이 과대 계산된다.
+    """
+
+
 def base_income(stage: int, rnd: int) -> int:
-    """라운드 기본 수입(초반 램프업 포함)."""
+    """라운드 기본 수입(초반 램프업 포함).
+
+    출처(tft.ninja economy)가 주는 값은 1-2 부터다. 그 앞인 1-1 은 문서에 없으므로
+    **추정하지 않고** 예외를 던진다.
+    """
     ramp = {(1, 2): 2, (1, 3): 2, (1, 4): 3, (2, 1): 4}
-    return ramp.get((stage, rnd), 5)
+    if (stage, rnd) in ramp:
+        return ramp[(stage, rnd)]
+    if stage == 1:
+        raise UnknownIncomeError(
+            f"{format_round(stage, rnd)} 기본 수입을 출처(tft.ninja economy)에서 확인하지 "
+            "못했다(출처는 1-2 부터다). 1-2 이후 라운드로 시작하거나, 확인한 값을 "
+            "economy.base_income 의 ramp 에 추가하세요."
+        )
+    return 5
 
 
 def streak_bonus(streak: int) -> int:
@@ -162,7 +238,7 @@ class RoundProjection:
             "base": self.base,
             "interest": self.interest_gold,
             "streak": self.streak_gold,
-            "win_expected": round(self.win_gold, 2),
+            "win_gold": round(self.win_gold, 2),
             "pve": self.pve_gold,
             "income": round(self.income, 2),
             "levelup_spend": self.levelup_spend,
@@ -242,6 +318,7 @@ def project(
     level = state.level
     gold = state.gold
     streak = state.streak
+    win_carry = 0.0  # 승리 보너스 기대값의 소수 이월분(반올림 편향 방지)
     rows: list[RoundProjection] = []
     notes: list[str] = []
 
@@ -253,6 +330,7 @@ def project(
         notes.append(f"스트릭 {streak:+d} 유지 가정")
     notes.append(
         f"승리 보너스는 기대값(승률 {win_rate:.0%} x 1골드). 실제로는 이기면 +1, 지면 +0"
+        " — 라운드마다 반올림하면 편향이 생기므로 소수를 이월(carry)해 정수분만 지급한다"
     )
     notes.append(f"PvE 라운드 골드 {pve_gold} 가정(공개 수치 아님)")
 
@@ -274,11 +352,17 @@ def project(
         gold_before_interest = gold + gained_base
         interest_gold = interest(gold_before_interest)
         streak_gold = streak_bonus(streak) if streak_behavior == "hold" else 0
-        win_gold = win_rate if kind == PVP else 0.0
+        win_expected = win_rate if kind == PVP else 0.0
+        # round(0.5) 는 은행원 반올림이라 0 이 된다. 그래서 기본 승률 50% 에서
+        # 승리 보너스가 통째로 사라졌다. 기대값의 소수를 이월해 정수분만 지급한다.
+        # 이렇게 하면 income(프로퍼티)과 gold_end 가 어긋나지 않는다.
+        win_carry += win_expected
+        win_gold = float(int(win_carry))
+        win_carry -= win_gold
         # 캐러셀 라운드는 승리 보너스 없음, PvE 는 오브에서 골드
         pve_round_gold = pve_gold if kind == PVE else 0
         gold_end = int(
-            gold_before_interest + interest_gold + streak_gold + round(win_gold) + pve_round_gold
+            gold_before_interest + interest_gold + streak_gold + win_gold + pve_round_gold
         )
         rows.append(
             RoundProjection(

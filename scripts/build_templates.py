@@ -10,8 +10,8 @@
 
 사용 예
 -------
-  py -3 scripts/build_templates.py --from-comps data/comps_set18.json
-  py -3 scripts/build_templates.py --units ahri,morgana,sett
+  python scripts/build_templates.py --from-comps data/comps_set18.json
+  python scripts/build_templates.py --units ahri,morgana,sett
 """
 
 from __future__ import annotations

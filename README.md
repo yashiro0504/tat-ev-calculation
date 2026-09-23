@@ -1,7 +1,7 @@
 # TFT "기회 리롤 / 밸류 전환" 계산기 — 실현 가능성 판정
 
 작성 기준일: 2026-08 데이터 / Set 18 (Enchanted Wilds)
-검증 환경: Windows, Python 3.14.4 (`py -3`), 표준 라이브러리만 사용
+검증 환경: Windows, Python 3.14.4 (표준 라이브러리만 사용, 명령 예시는 `python` 기준)
 
 ---
 
@@ -76,7 +76,7 @@
 - Set 18 풀: 1코 30 / 2코 25 / 3코 18 / 4코 10 / 5코 9 (챔피언 1종당).
 
 ### 3.2 공개 벤치마크 재현 (실행 결과 그대로)
-`py -3 -m tftcalc.cli selftest`:
+`python -m tftcalc.cli selftest`:
 
 ```
 남은 사본 7 / 남은 4코 풀 137 -> 1칸 1.5%
@@ -146,7 +146,7 @@
 상대 보유를 **±n장 틀렸다고 가정하고 전 구간을 다시 계산**해서, 결론이 유지되는지 본다.
 
 ```
-py -3 -m tftcalc.cli robustness --level 8 --cost 4 --own 1 --others 2 --tolerance 2 --budget 60
+python -m tftcalc.cli robustness --level 8 --cost 4 --own 1 --others 2 --tolerance 2 --budget 60
 
     상대보유     남은사본     1상점      예산내완성      기대총골드  결론
        0        9    9.3%      69.7%      43.7g  롤다운
@@ -183,16 +183,19 @@ tft-ev-calculator/
 ├─ README.md                     ← 이 판정 문서
 ├─ tftcalc/
 │  ├─ set_data.py                풀 사이즈/리롤 비용/성급 가중치/레벨업 XP + 검증 확률 셀
-│  ├─ odds.py                    상점 확률표(모르는 셀은 UnknownOddsError)
+│  ├─ odds.py                    상점 확률표(모르는 셀은 UnknownOddsError, 이상값은 InvalidOddsError)
 │  ├─ pool_math.py               확률/기대골드(해석해) + 몬테카를로 롤다운
 │  ├─ lobby.py                   로비 스냅샷 → 챔피언별 남은 사본 + 신뢰도
 │  ├─ decision.py                기물 비용 리포트 + 커밋 vs 전환 + 오차 내성 검사
 │  ├─ comp.py                    덱 엔진: 기물별 2·3성 확률, 컴프 동시 완성, 효율 랭킹
 │  ├─ items.py                   아이템: 조합식 로더, 필요 부품, 수급 확률(부품 모델)
-│  ├─ economy.py                 시간 축: 라운드 수입(기본/이자/스트릭/승리/PvE), 레벨업 지출, 전망
+│  ├─ economy.py                 시간 축: 라운드 수입/구조(스테이지 1=4라운드), 레벨업 지출, 전망 길이
 │  ├─ survival.py                체력 축: 피해 공식, 생존확률 시뮬, 안정화 vs 세이빙 비교
+│  ├─ trials.py                  몬테카를로 시행 수 기본값 한곳(FAST/REPEATED/STANDARD/HEAVY)
+│  ├─ render.py                  표 출력/형식: 확률·골드 표기 정직성, 한글 폭 패딩/자르기
+│  ├─ rules.py                   규칙 기반 권장 동선 + 근거(순수 함수, 단독 테스트 가능)
 │  ├─ cv/                        화면 인식: screen(캡처/BMP)·fingerprint(지문)·layout(좌표)·scan(스냅샷)
-│  └─ cli.py                     report/scan/plan/survive/comp/items/outlook/unit/lobby/odds/sensitivity/robustness/selftest
+│  └─ cli.py                     명령 13개 — build_parser() + 각 cmd_* 핸들러
 ├─ data/
 │  ├─ set18_shop_odds.json          사람이 채우는 확률표(비어 있음 = 정직하게 비어 있음)
 │  ├─ set18_shop_odds_assumed.json  데모용 가정값(검증 안 됨, 출력에 소스로 표시)
@@ -208,58 +211,69 @@ tft-ev-calculator/
 │  ├─ check_capture.py              캡처 확인 + 좌표 디버그(BMP 저장)
 │  ├─ crop_slots.py                 벤치/상점 칸 크롭 저장(라벨링용)
 │  └─ simulate_scan.py              실제 아이콘으로 가짜 스크린샷 생성(스캔 검증용)
-└─ tests/
-   ├─ test_pool_math.py          20개: 공개 벤치마크 재현 + 입력 오차 처리
-   ├─ test_comp.py               15개: 덱 엔진 불변식 + 레벨/레벨업 정산
-   ├─ test_items.py              13개: 조합식 정확성 + 부품 수급 확률/우선순위
-   ├─ test_economy.py            14개: 수입 규칙(기본/이자/스트릭), 라운드 구조, 레벨업 지출, 전망
-   ├─ test_survival.py           12개: 피해 공식(문서 예시 대조), 생존 시뮬, 전략 비교(교환비율)
-   ├─ test_report.py              5개: 통합 리포트 섹션 출력/생략/규칙 판정
-   ├─ test_cv.py                 20개: 캡처/BMP, 지문 분류, 마진 정책, 좌표, 합성 스크린샷
-   └─ test_scan.py               11개: 스캔→스냅샷(코스트/성급/미확인), 상대 보존, CLI 배선
+└─ tests/                       (`__init__.py` 포함 — `python -m unittest discover` 동작)
+   ├─ test_pool_math.py          31개: 공개 벤치마크 재현 + 오차 처리 + 확률표 검증 + 예산 탐색 동치
+   ├─ test_comp.py               18개: 덱 엔진 불변식 + 레벨/레벨업 정산 + 분해 표 커버리지
+   ├─ test_items.py              15개: 조합식 정확성 + 부품 수급 확률/우선순위 + 필드 선언
+   ├─ test_economy.py            26개: 수입 규칙, 라운드 구조(스테이지 1=4), 레벨업 지출, 전망 길이
+   ├─ test_survival.py           16개: 피해 공식(문서 예시 대조), 생존 시뮬, 전략 비교(교환비율)
+   ├─ test_report.py              6개: 통합 리포트 섹션 출력/생략/규칙 판정
+   ├─ test_cv.py                 27개: 캡처/BMP, 지문 분류, 마진 정책, 좌표 검증, 문턱 상수
+   ├─ test_scan.py               11개: 스캔→스냅샷(코스트/성급/미확인), 상대 보존, CLI 배선
+   ├─ test_cli.py                20개: 명령 스모크 + 입력 오류 안내 + 표 정렬(한글 폭)
+   ├─ test_render.py             16개: 확률/골드 표기 정직성, 한글 폭 패딩/자르기
+   ├─ test_rules.py               8개: 규칙 기반 권장 동선 5분기 + 근거 목록
+   └─ test_trials_defaults.py     4개: 시행 수 기본값이 trials.py 상수에서 오는지
 ```
 
 ### 실행 방법 (Windows)
 ```powershell
 cd C:\Users\이재영\AppData\Local\Cline\tft-ev-calculator
-py -3 -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 38 --streak -3 ^
+python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 38 --streak -3 ^
     --target-round 4-5 --levelup 4-2:8 --roll-gold 40 ^
     --snapshot data/example_snapshot.json --comps data/comps_set18.json ^
     --odds-file data/set18_shop_odds_assumed.json ^
     --components rod:2,gloves,tear --future-components 6   # ★ 실전은 이 한 줄
-py -3 -m tftcalc.cli selftest                    # 엔진 검증(공개 수치 재현)
-py -3 -m tftcalc.cli odds                        # 아는 확률 셀만 보기
-py -3 -m tftcalc.cli outlook --snapshot data/example_snapshot.json --level 8 --budget 100 ^
+python -m tftcalc.cli selftest                    # 엔진 검증(공개 수치 재현)
+python -m tftcalc.cli odds                        # 아는 확률 셀만 보기
+python -m tftcalc.cli outlook --snapshot data/example_snapshot.json --level 8 --budget 100 ^
     --odds-file data/set18_shop_odds_assumed.json   # 기물별 2성/3성 확률
-py -3 -m tftcalc.cli comp --snapshot data/example_snapshot.json --comps data/comps_set18.json ^
+python -m tftcalc.cli comp --snapshot data/example_snapshot.json --comps data/comps_set18.json ^
     --gold 150 --levelup-from 7 --levelup-rounds 6 ^
     --odds-file data/set18_shop_odds_assumed.json   # 덱 효율 랭킹(가장 싸게 완성되는 덱)
-py -3 -m tftcalc.cli unit --level 8 --cost 4 --own 2 --others 3 --target-star 2 --budget 60
-py -3 -m tftcalc.cli lobby --snapshot data/example_snapshot.json --champion Karma --level 8 --budget 60
-py -3 -m tftcalc.cli items --comps data/comps_set18.json --comp-index 1 ^
+python -m tftcalc.cli unit --level 8 --cost 4 --own 2 --others 3 --target-star 2 --budget 60
+python -m tftcalc.cli lobby --snapshot data/example_snapshot.json --champion Karma --level 8 --budget 60
+python -m tftcalc.cli items --comps data/comps_set18.json --comp-index 1 ^
     --components rod:2,gloves,tear,sword,bow --future-components 6 --choice-components 2
-py -3 -m tftcalc.cli plan --round 3-5 --gold 60 --level 6 --streak 3 --rounds 8 ^
+python -m tftcalc.cli plan --round 3-5 --gold 60 --level 6 --streak 3 --rounds 8 ^
     --levelup 4-2:8 --target-round 4-5 --need-gold 130 ^
     --comps data/comps_set18.json --snapshot data/example_snapshot.json ^
     --odds-file data/set18_shop_odds_assumed.json
-py -3 -m tftcalc.cli survive --round 4-1 --hp 38 --win-rate 0.35 --enemy-survivors 8 ^
+python -m tftcalc.cli survive --round 4-1 --hp 38 --win-rate 0.35 --enemy-survivors 8 ^
     --target-round 4-5 --gold 60 --level 7 --streak -3 ^
     --roll-gold 40 --win-rate-roll 0.6
-py -3 -m tftcalc.cli robustness --level 8 --cost 4 --own 1 --others 2 --tolerance 2 --budget 60
-py -3 tests\test_pool_math.py                    # 20 tests, OK
-py -3 tests\test_comp.py                         # 15 tests, OK
-py -3 tests\test_items.py                        # 13 tests, OK
-py -3 tests\test_economy.py                      # 14 tests, OK
-py -3 tests\test_survival.py                     # 12 tests, OK
-py -3 tests\test_report.py                       #  5 tests, OK
-py -3 tests\test_cv.py                           # 20 tests, OK  (실제 화면 캡처 포함)
-py -3 tests\test_scan.py                         # 11 tests, OK  (스캔->스냅샷->리포트)
-py -3 scripts\check_capture.py --out shot.bmp    # 캡처 확인 + 좌표 디버그
-py -3 scripts\build_templates.py --from-comps data/comps_set18.json   # 아이콘 템플릿 생성
-py -3 scripts\simulate_scan.py --units ahri,morgana,sett --out sim_shot.bmp  # 스캔 검증용 가짜 화면
-py -3 scripts\fetch_item_recipes.py --slugs jeweled-gauntlet,blue-buff   # 조합식 확인/갱신
+python -m tftcalc.cli robustness --level 8 --cost 4 --own 1 --others 2 --tolerance 2 --budget 60
+python tests\test_pool_math.py                    # 31 tests, OK
+python tests\test_comp.py                         # 18 tests, OK
+python tests\test_items.py                        # 15 tests, OK
+python tests\test_economy.py                      # 26 tests, OK
+python tests\test_survival.py                     # 16 tests, OK
+python tests\test_report.py                       #  6 tests, OK
+python tests\test_cv.py                           # 27 tests, OK  (실제 화면 캡처 포함)
+python tests\test_scan.py                         # 11 tests, OK  (스캔->스냅샷->리포트)
+python tests\test_cli.py                          # 20 tests, OK  (명령 스모크 + 오류 안내 + 표 정렬)
+python tests\test_render.py                       # 16 tests, OK  (표기 정직성/한글 폭)
+python tests\test_rules.py                        #  8 tests, OK  (규칙 기반 판정)
+python tests\test_trials_defaults.py              #  4 tests, OK  (시행 수 상수)
+python -m unittest discover -s tests -t .        # 위 전부 한 번에(198 tests, OK)
+python scripts\check_capture.py --out shot.bmp    # 캡처 확인 + 좌표 디버그
+python scripts\build_templates.py --from-comps data/comps_set18.json   # 아이콘 템플릿 생성
+python scripts\simulate_scan.py --units ahri,morgana,sett --out sim_shot.bmp  # 스캔 검증용 가짜 화면
+python scripts\fetch_item_recipes.py --slugs jeweled-gauntlet,blue-buff   # 조합식 확인/갱신
 ```
-> 주의: 이 PC 에서 `python` 은 Windows Store 스텁(`WindowsApps\python.exe`)으로 잡혀 실패한다. **`py -3`** 또는 `%LOCALAPPDATA%\Python\bin\python.exe` 를 쓴다.
+> **주의: 실행기는 PC마다 다르다.** `python` 이 Windows Store 스텁(`WindowsApps\python.exe`)이라면
+> **`py -3`** 또는 `%LOCALAPPDATA%\Python\bin\python.exe` 를 쓰고, 반대로 `py` 런처가 없으면 `python` 을 쓴다.
+> (아래 예시는 `python` 기준이다.)
 
 ### `lobby` 실행 예 (실제 출력)
 ```
@@ -322,7 +336,7 @@ py -3 scripts\fetch_item_recipes.py --slugs jeweled-gauntlet,blue-buff   # 조�
 ### 5.3 실행 예 (실제 출력)
 
 ```
-py -3 -m tftcalc.cli outlook --odds-file data/set18_shop_odds_assumed.json ^
+python -m tftcalc.cli outlook --odds-file data/set18_shop_odds_assumed.json ^
     --snapshot data/example_snapshot.json --level 8 --budget 150 ^
     --units Karma:4,Sentry:3,Leona:3,Warwick:3
 
@@ -336,7 +350,7 @@ Warwick         3    0   17    8.6%   93.2%       74.8g   2.43%      131.2g
 "3성 가자"는 판단이 얼마나 비싼 도박인지가 숫자로 드러난다.
 
 ```
-py -3 -m tftcalc.cli comp --odds-file data/set18_shop_odds_assumed.json ^
+python -m tftcalc.cli comp --odds-file data/set18_shop_odds_assumed.json ^
     --snapshot data/example_snapshot.json --comps data/comps_set18.json ^
     --gold 150 --levelup-from 7 --levelup-rounds 6
 
@@ -398,8 +412,8 @@ Hunter·Primal·Blackthorn·Adaptor·Invoker…)과 **정확히 일치**한다. 
 
 **갱신 자동화** (메타는 2주 단위로 바뀐다):
 ```powershell
-py -3 scripts/fetch_unit_costs.py --from-comps data/comps_set18.json   # 컴프에 쓰인 유닛 코스트 재수집
-py -3 scripts/fetch_unit_costs.py --units ahri,morgana,taric           # 개별 확인
+python scripts/fetch_unit_costs.py --from-comps data/comps_set18.json   # 컴프에 쓰인 유닛 코스트 재수집
+python scripts/fetch_unit_costs.py --units ahri,morgana,taric           # 개별 확인
 ```
 → 컴프에 유닛을 추가/교체하고 위 명령만 돌리면 **코스트가 틀릴 위험 없이** 갱신된다.
 
@@ -428,7 +442,7 @@ py -3 scripts/fetch_unit_costs.py --units ahri,morgana,taric           # 개별 
 
 **사용한 데이터 (전부 출처 검증)**
 * 조합식 31개: `tft.ninja/items/<slug>` 페이지의 부품 이미지(`DA_Component_*`)를 파싱해 생성
-  → `py -3 scripts/fetch_item_recipes.py` (생성물: `data/set18_item_recipes.json`)
+  → `python scripts/fetch_item_recipes.py` (생성물: `data/set18_item_recipes.json`)
   → 파서 검증: Deathblade=검+검, Infinity Edge=검+장갑, Guinsoo=큰지팡이+활, Warmog=벨트+벨트 등 **공개 조합식과 전부 일치**
 * 캐리별 코어 아이템: 덱 공략의 추천 아이템(예: 아리 → 보석 건틀릿·푸른 파수꾼·라바돈)을
   `comps_set18.json` 의 `items.core`(우선순위 순)에 기입
@@ -578,7 +592,7 @@ py -3 scripts/fetch_unit_costs.py --units ahri,morgana,taric           # 개별 
 지금까지 만든 축(유닛·아이템·골드·체력)을 **명령 하나로 모은다**. 실전에서는 이 한 장만 보면 된다.
 
 ```powershell
-py -3 -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 38 --streak -3 ^
+python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 38 --streak -3 ^
     --target-round 4-5 --levelup 4-2:8 --roll-gold 40 --win-rate 0.35 --win-rate-roll 0.6 ^
     --snapshot data/example_snapshot.json --comps data/comps_set18.json ^
     --odds-file data/set18_shop_odds_assumed.json ^
@@ -672,12 +686,12 @@ scripts/crop_slots.py      벤치/상점 칸 크롭 저장(TFT 전용 유닛 라
 
 **실제로 검증된 것 (이 PC, Windows 1920x1080)**
 ```
-py -3 scripts/check_capture.py --out shot.bmp
+python scripts/check_capture.py --out shot.bmp
 [캡처] 전체 화면: 1920x1080
   분산(검은 화면 판별): 10230.7 (0에 가까우면 캡처 실패 의심)   <- 실제 캡처 성공
   저장: shot.bmp
 
-py -3 scripts/build_templates.py --from-comps data/comps_set18.json
+python scripts/build_templates.py --from-comps data/comps_set18.json
 [OK] Ahri <- Ahri.png (128x128) ... (28개 성공)
 저장: data/templates_set18.json (템플릿 28개, 그리드 8)
 [자체 검증] 자기 분류 정확도 100.0% / 평균 마진 0.354        <- 템플릿 품질 지표
@@ -689,9 +703,9 @@ py -3 scripts/build_templates.py --from-comps data/comps_set18.json
 
 **TFT 전용 유닛 보충 (Krug, Pebbles, Cinderling …)**
 ```powershell
-py -3 scripts/crop_slots.py --area shop,bench      # data/crops/shop_1.bmp ... 14개 생성
+python scripts/crop_slots.py --area shop,bench      # data/crops/shop_1.bmp ... 14개 생성
 # 파일 이름을 유닛 이름으로 바꾼다: shop_3.bmp -> Krug.bmp
-py -3 scripts/build_templates.py --from-crops data/crops
+python scripts/build_templates.py --from-crops data/crops
 ```
 
 **정직하게 말할 한계 (중요)**
@@ -711,11 +725,11 @@ py -3 scripts/build_templates.py --from-crops data/crops
 **두 가지 사용법**
 ```powershell
 # (A) 스캔만: 스냅샷 파일 생성
-py -3 -m tftcalc.cli scan --templates data/templates_set18.json ^
+python -m tftcalc.cli scan --templates data/templates_set18.json ^
     --in shot.bmp --area bench,shop --out data/my_board.json --keep-opponents data/lobby.json
    
 # (B) 한 번에: 스캔 + 통합 리포트  ← 실전은 이 한 줄
-py -3 -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3 ^
+python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3 ^
     --target-round 4-5 --levelup 4-2:8 --roll-gold 40 ^
     --scan --templates data/templates_set18.json --scan-out data/my_board.json ^
     --snapshot data/lobby.json --comps data/comps_set18.json ^
@@ -727,10 +741,10 @@ py -3 -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3 
 
 **실제 아이콘으로 끝까지 검증한 결과** (게임 화면 대신 실제 Data Dragon 아이콘을 상점 좌표에 붙여 시험)
 ```
-py -3 scripts/simulate_scan.py --units ahri,morgana,sett,karma --out sim_shot.bmp
+python scripts/simulate_scan.py --units ahri,morgana,sett,karma --out sim_shot.bmp
 [붙임] shop_1 ahri (Ahri.png) / shop_2 morgana / shop_3 sett / shop_4 karma
 
-py -3 -m tftcalc.cli scan --templates data/templates_set18.json --in sim_shot.bmp --area shop
+python -m tftcalc.cli scan --templates data/templates_set18.json --in sim_shot.bmp --area shop
 === 화면 스캔 결과 ===
 인식 확정 4칸 / 확인 필요 1칸 (신뢰도 80%)
   [확정] shop_1  Ahri     4코 (유사도 97.1%)
@@ -763,12 +777,12 @@ py -3 -m tftcalc.cli scan --templates data/templates_set18.json --in sim_shot.bm
 ## 6. 다음 단계 (권장 순서 + 각 단계 게이트)
 
 > **다른 PC에서 이어서 작업할 때는 [`NEXT_STEPS.md`](NEXT_STEPS.md) 를 먼저 보세요.**
-> 클론 → 테스트 110개 확인 → 좌표 캘리브레이션 → 성급/숫자 인식 설계까지 실행 명령 단위로 정리돼 있습니다.
+> 클론 → 테스트 198개 확인 → 좌표 캘리브레이션 → 성급/숫자 인식 설계까지 실행 명령 단위로 정리돼 있습니다.
 
 | 주차 | 할 일 | 통과 기준(게이트) |
 |---|---|---|
 | W1 | **수동 스냅샷으로 실전 10판 기록** → 계산 vs 실제 결과 비교 | 예측 기대골드와 실제 소모 골드의 오차가 ±25% 이내 |
-| W2 | `data/set18_shop_odds.json` 에 **인게임 상점 확률**을 옮겨 적기(패치노트/인게임 표시) | `py -3 -m tftcalc.cli odds` 에 1~10레벨이 다 뜨고, 그 값으로 전 레벨 계산 가능 |
+| W2 | `data/set18_shop_odds.json` 에 **인게임 상점 확률**을 옮겨 적기(패치노트/인게임 표시) | `python -m tftcalc.cli odds` 에 1~10레벨이 다 뜨고, 그 값으로 전 레벨 계산 가능 |
 | W3 | **승률 캘리브레이션** — 매 게임 "라운드/골드/HP/승률"만 기록해 `--win-rate` 를 실측으로 교체 | 교환비율(1%p당 골드)이 개인 데이터로 산출됨 |
 | W4 | ~~CV 어댑터~~ → **✅ 1차 구현 완료**(5.11). 남은 것: **게임 화면에서 좌표·정확도 실측 + 성급(별) 인식 + 숫자 OCR** | 상점/벤치 인식 정확도 99% 이상(오인식은 골드를 잘못 세게 만든다) |
 | W5 | **Overwolf GEP 30분 스파이크**: `opponent_board_pieces` 가 8명인지 1명인지 확인 | (a)면 CV 대부분 폐기, (b)면 "관전 자동화 없음" 전제로 CV 유지 |

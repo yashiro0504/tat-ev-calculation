@@ -380,5 +380,73 @@ class TestCompLevelAndLevelup(unittest.TestCase):
             )
 
 
+class TestUnitCompletion(unittest.TestCase):
+    """unit_completion / unit_count 가 분해 표와 헤더에 정확히 반영되는지.
+
+    Regression: ``unit_completion`` 이 목표 미달 유닛(targets)만 키로 삼아서,
+    이미 2성인 유닛이 "1위 컴프 분해" 표에서 조용히 빠졌다. ``unit_count`` 도
+    미달 유닛만 세서 헤더의 "유닛"(컴프 규모)과 의미가 달랐다.
+    """
+
+    ODDS = ShopOdds(cells={(8, 4): 0.30}, source="테스트")
+
+    def _comp(self) -> comp.Comp:
+        return comp.Comp(
+            name="mixed",
+            units=[comp.UnitTarget("Done", 4, 2), comp.UnitTarget("Need", 4, 2)],
+        )
+
+    def _simulate(self, comp_obj: comp.Comp, owned, in_play, tier) -> dict:
+        return comp.simulate_comp(
+            self.ODDS,
+            comp=comp_obj,
+            owned_by_champion=owned,
+            copies_in_play=in_play,
+            tier_in_play=tier,
+            level=8,
+            roll_budget=40,
+            trials=200,
+            seed=1,
+        )
+
+    def test_completion_covers_every_unit_including_done(self):
+        result = self._simulate(
+            self._comp(),
+            owned={"Done": 3, "Need": 1},
+            in_play={"Done": 3, "Need": 1},
+            tier={4: 4},
+        )
+        self.assertEqual(set(result["unit_completion"]), {"Done", "Need"})
+        self.assertEqual(result["unit_completion"]["Done"], 1.0)
+
+    def test_unit_count_is_comp_size_not_pending(self):
+        """헤더 '유닛' 은 컴프 규모여야 한다(보유 여부에 따라 달라지면 안 된다)."""
+        result = self._simulate(
+            self._comp(),
+            owned={"Done": 3, "Need": 1},
+            in_play={"Done": 3, "Need": 1},
+            tier={4: 4},
+        )
+        self.assertEqual(result["unit_count"], 2)
+
+    def test_impossible_comp_keeps_done_unit_at_one(self):
+        """컴프 전체가 '불가'여도 완성된 유닛까지 0.0 으로 치면 안 된다."""
+        blocked = comp.Comp(
+            name="blocked",
+            units=[comp.UnitTarget("Done", 4, 2), comp.UnitTarget("Gone", 4, 3)],
+        )
+        result = self._simulate(
+            blocked,
+            owned={"Done": 3, "Gone": 0},
+            # Gone 은 3성(9장) 중 9장이 이미 상대 소유 -> 남은 1장 < 필요 9장
+            in_play={"Done": 3, "Gone": 9},
+            tier={4: 12},
+        )
+        self.assertEqual(result["impossible"], ["Gone"])
+        self.assertEqual(result["unit_completion"]["Done"], 1.0)
+        self.assertEqual(result["unit_completion"]["Gone"], 0.0)
+        self.assertEqual(result["unit_count"], 2)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 import sys
 import unittest
@@ -139,6 +140,27 @@ class TestCompIntegration(unittest.TestCase):
     def test_limit_zero_means_all(self):
         core = {"A": 1, "B": 2}
         self.assertEqual(items.comp_core_items(core, limit=0), core)
+
+
+class TestRecipeBookFieldDeclaration(unittest.TestCase):
+    """정규화 인덱스를 dataclass 필드로 선언했는지(L8)."""
+
+    def test_by_normalized_is_a_declared_field(self):
+        """Regression: 동적 속성으로 두면 타입 체커가 '선언 안 된 속성'으로 잡는다."""
+        import dataclasses
+
+        names = {f.name for f in dataclasses.fields(items.RecipeBook)}
+        self.assertIn("by_normalized", names)
+        # 생성자 인자로는 노출되면 안 된다(파생 값이므로).
+        self.assertNotIn(
+            "by_normalized",
+            {p for p in inspect.signature(items.RecipeBook).parameters},
+        )
+
+    def test_index_is_built_for_every_recipe(self):
+        book = items.RecipeBook.load()
+        self.assertEqual(len(book.by_normalized), len(book.recipes))
+        self.assertIn("warmogsarmor", book.by_normalized)
 
 
 if __name__ == "__main__":

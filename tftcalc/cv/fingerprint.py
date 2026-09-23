@@ -25,6 +25,21 @@ from .screen import Image
 DEFAULT_GRID = 8
 DEFAULT_INSET = 0.18  # 칸 영역에서 테두리/발광을 피하려고 중앙부만 사용
 
+#: 최소 유사도(0~1). ``similarity`` 는 z-정규화 지문의 평균 L1 거리를 환산한 값이다.
+#:
+#: 실측 근거(data/templates_set18.json, 28개 템플릿 378쌍, 2026-09-23):
+#:   * 자기 유사도             = 1.0000
+#:   * 서로 다른 쌍 : 최소 0.2649 / 평균 0.4719 / **최대 0.7438** (Zyra vs Leona)
+#:
+#: 따라서 이 값은 "오분류를 막는 문턱"이 **아니다** — 서로 다른 챔피언도 0.74 를 넘는다.
+#: 진짜 분별력은 1위-2위 차이(``REVIEW_MARGIN``)에 있고, 실제 캡처 화면과 템플릿의
+#: 유사도는 0.95~0.97 로 그 차이는 0.2 이상 나온다(README 5.11).
+#: 이 값의 역할은 **전혀 관련 없는 영역(빈 칸/가림)** 을 걸러내는 바닥선이다.
+MIN_SCORE = 0.5
+
+#: 1위-2위 유사도 차. 이보다 작으면 확정하지 않고 ``needs_review=True``.
+REVIEW_MARGIN = 0.05
+
 
 def fingerprint(image: Image, grid: int = DEFAULT_GRID, inset: float = DEFAULT_INSET) -> list[float]:
     """영역 -> 정규화된 NxN 그레이스케일 지문(평균 0, 표준편차 1)."""
@@ -143,10 +158,18 @@ def classify(
     template_set: TemplateSet,
     *,
     inset: float = DEFAULT_INSET,
-    review_margin: float = 0.05,
-    min_score: float = 0.5,
+    review_margin: float = REVIEW_MARGIN,
+    min_score: float = MIN_SCORE,
 ) -> Match:
-    """영역을 템플릿 중 하나로 분류한다. 애매하면 needs_review=True."""
+    """영역을 템플릿 중 하나로 분류한다. 애매하면 needs_review=True.
+
+    두 문턱의 역할(위 상수의 실측 근거 참조):
+
+    * ``min_score``     — 관련 없는 영역(빈 칸/가림)을 걸러내는 **바닥선**.
+                          서로 다른 챔피언도 0.74 를 넘으므로 오분류 차단용이 아니다.
+    * ``review_margin`` — 1위와 2위가 비슷하면 확정하지 않는 **분별 기준**.
+                          진짜 분별력이 여기에 있다.
+    """
     query = fingerprint(image, grid=template_set.grid, inset=inset)
     if not template_set.templates:
         return Match(name="unknown", score=0.0, margin=0.0, needs_review=True)

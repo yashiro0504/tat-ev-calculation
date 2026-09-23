@@ -77,7 +77,9 @@ class LobbySnapshot:
                     cost=int(unit["cost"]),
                     star=int(unit.get("star", 1)),
                 )
-                for key in ("board", "bench", "items_held")
+                # 기물(board/bench)만 집계한다. 아이템(items_held 등)을 함께 돌리면
+                # 아이템 이름이 챔피언으로 분류돼 풀 소모량이 오염된다.
+                for key in ("board", "bench")
                 for unit in entry.get(key, [])
             ]
             players.append(

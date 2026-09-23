@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from tftcalc import survival  # noqa: E402
+from tftcalc import economy, survival  # noqa: E402
 
 
 class TestDamageFormula(unittest.TestCase):
@@ -144,6 +144,50 @@ class TestStrategyComparison(unittest.TestCase):
         )
         comparison = survival.compare_stabilize_vs_save(save=save, stabilize=stabilize)
         self.assertIn("세이빙", comparison.verdict)
+
+
+class TestSurvivorReporting(unittest.TestCase):
+    """표의 값과 note 의 설명이 같은 quantity 를 뜻하는지.
+
+    Regression: ``expected_survivors`` 가 승리(잔존 0)까지 섞어 나눠서,
+    note 의 "패배 시 잔존 유닛 평균 8.0" 과 표의 4.04 가 서로 달랐다.
+    또한 PvE/캐러셀 행의 ``base`` 는 모델(피해 0)과 반대로 스테이지 기본값을
+    보여줬다.
+    """
+
+    def test_expected_survivors_is_conditional_on_loss(self):
+        result = survival.simulate_survival(
+            80, (4, 1), rounds=3, win_rate=0.5,
+            enemy_survivors=8.0, survivors_sd=0.0, trials=5_000, seed=7,
+        )
+        pvp = [row for row in result.rounds if row.kind == economy.PVP]
+        self.assertTrue(pvp)
+        for row in pvp:
+            self.assertAlmostEqual(row.expected_survivors, 8.0, delta=0.01)
+
+    def test_no_losses_reports_assumed_value_not_zero(self):
+        """패배가 한 번도 없어도 0 으로 위장하지 않는다(가정값을 그대로)."""
+        result = survival.simulate_survival(
+            80, (4, 1), rounds=2, win_rate=1.0,
+            enemy_survivors=8.0, survivors_sd=0.0, trials=300, seed=1,
+        )
+        self.assertEqual(result.rounds[0].expected_survivors, 8.0)
+
+    def test_non_pvp_round_reports_applied_base_damage(self):
+        """PvE/캐러셀 행의 '기본피해' 는 그 라운드에 실제 적용되는 값이어야 한다."""
+        result = survival.simulate_survival(
+            60, (4, 3), rounds=2, win_rate=0.5, pve_damage=0, trials=1_000, seed=2,
+        )
+        self.assertEqual(result.rounds[0].kind, economy.PVP)
+        self.assertEqual(result.rounds[0].base, 8)  # 4스테이지 기본(패배 시)
+        self.assertEqual(result.rounds[1].kind, economy.CAROUSEL)
+        self.assertEqual(result.rounds[1].base, 0)  # 스테이지 기본(8)이 아닌 적용값
+
+    def test_custom_pve_damage_appears_as_base(self):
+        result = survival.simulate_survival(
+            60, (4, 3), rounds=2, win_rate=0.5, pve_damage=4, trials=500, seed=2,
+        )
+        self.assertEqual(result.rounds[1].base, 4)
 
 
 if __name__ == "__main__":

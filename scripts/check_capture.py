@@ -8,12 +8,12 @@
 
 사용 예
 -------
-  py -3 scripts/check_capture.py --out shot.bmp                 # 전체 화면 캡처 + 저장
-  py -3 scripts/check_capture.py --window "Teamfight Tactics" --out shot.bmp
-  py -3 scripts/check_capture.py --region 0,0,1920,1080 --out shot.bmp
-  py -3 scripts/check_capture.py --in shot.bmp --shop           # 저장본으로 상점 5칸 인식 시험
-  py -3 scripts/check_capture.py --in shot.bmp --layout data/layout_1920x1080.json --shop
-  py -3 scripts/check_capture.py --in shot.bmp --no-templates   # 인식 없이 캡처 상태만
+  python scripts/check_capture.py --out shot.bmp                 # 전체 화면 캡처 + 저장
+  python scripts/check_capture.py --window "Teamfight Tactics" --out shot.bmp
+  python scripts/check_capture.py --region 0,0,1920,1080 --out shot.bmp
+  python scripts/check_capture.py --in shot.bmp --shop           # 저장본으로 상점 5칸 인식 시험
+  python scripts/check_capture.py --in shot.bmp --layout data/layout_1920x1080.json --shop
+  python scripts/check_capture.py --in shot.bmp --no-templates   # 인식 없이 캡처 상태만
 
 기본적으로 data/templates_set18.json 으로 벤치+상점 인식을 시험하고, 칸별 픽셀 좌표를 함께
 출력한다 -> 그 좌표가 아이콘과 어긋나면 --layout JSON(비율 0~1)으로 보정한다.
@@ -30,6 +30,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tftcalc.cv import fingerprint, layout, screen  # noqa: E402
+from tftcalc.render import pad  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -95,7 +96,10 @@ def main(argv: list[str] | None = None) -> int:
                 if args.shop
                 else layout.resolve("bench", overrides) + layout.resolve("shop", overrides)
             )
-            print(f"{'영역':>10}{'인식':>16}{'점수':>8}{'마진':>8}  픽셀(x,y,w,h)  판정")
+            print(
+                f"{pad('영역', 10, '>')}{pad('인식', 16, '>')}"
+                f"{pad('점수', 8, '>')}{pad('마진', 8, '>')}  픽셀(x,y,w,h)  판정"
+            )
             for name, box in regions:
                 x, y, width, height = layout.to_pixels(box, image.width, image.height)
                 region = image.crop(x, y, width, height)

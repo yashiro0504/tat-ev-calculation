@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from . import pool_math, set_data
 from .lobby import LobbySnapshot
 from .odds import ShopOdds
+from .trials import REPEATED, STANDARD
 
 HEURISTIC_DISCLAIMER = (
     "보드 파워/증강 상성/메타는 이 모듈이 계산하지 않는다. "
@@ -51,7 +52,7 @@ def unit_cost_report(
     own_copies: int,
     target_star: int = 2,
     budget: int = 60,
-    trials: int = 4_000,
+    trials: int = STANDARD,
     seed: int = 1234,
 ) -> dict[str, object]:
     """기물 1종을 목표 성급까지 올리는 비용 리포트 (파트 1 의 핵심 출력)."""
@@ -145,7 +146,7 @@ def compare_lines(
     a: RollLine,
     b: RollLine,
     *,
-    trials: int = 4_000,
+    trials: int = STANDARD,
     seed: int = 7,
 ) -> Comparison:
     """두 라인을 (완성 확률, 기대 골드)로 비교한다.
@@ -254,7 +255,8 @@ def robustness_scan(
     target_star: int = 2,
     budget: int = 60,
     commit_threshold: float = 0.5,
-    trials: int = 3_000,
+    tier_in_play: int | None = None,
+    trials: int = REPEATED,
     seed: int = 17,
 ) -> dict[str, object]:
     """상대 보유 카운트의 오차(±tolerance장)가 결론을 뒤집는지 검사한다.
@@ -263,19 +265,29 @@ def robustness_scan(
     오차를 없앨 수는 없으므로, 대신 '그 오차가 결론을 바꾸는가'를 계산해서
     바뀌면 사용자에게 추가 확인을 요구한다. 이것이 가짜 정밀도를 막는 장치다.
 
+    tier_in_play
+        해당 코스트 등급 전체 소모 사본 수. None 이면 ``own + others`` 로 가정한다
+        (= 같은 코스트의 다른 기물은 아무도 안 들고 있다는 뜻). cmd_unit 이 같은
+        가정을 ``[가정]`` 으로 알리는 것과 맞추기 위해, 이 가정 여부를 결과에
+        ``tier_assumed`` 로 함께 노출한다.
+
     commit_threshold 는 **표시 규칙**이다(과학적 상수가 아니다):
     예산 내 완성 확률이 이 값 미만이면 '전환 검토'로 표시한다.
     """
     cost_odds = odds.cost_odds(level, unit_cost)  # 확률표를 모르면 여기서 멈춘다
     need = max(0, set_data.STAR_COPY_WEIGHTS[target_star] - own_copies)
+    # 등급 전체 소모량: 모르면 '내 + 상대(중앙값)' 으로 가정한다.
+    tier_base = (own_copies + others_copies) if tier_in_play is None else tier_in_play
     rows: list[dict[str, object]] = []
 
     for others in range(
         max(0, others_copies - tolerance), others_copies + tolerance + 1
     ):
         copies_in_play = own_copies + others
+        # 상대 보유를 ±n 장 흔들면 등급 전체 소모량도 같은 크기로 움직인다.
+        tier_total = max(0, tier_base + (others - others_copies))
         remaining_target = pool_math.remaining_target_copies(unit_cost, copies_in_play)
-        remaining_tier = pool_math.remaining_tier_copies(unit_cost, copies_in_play)
+        remaining_tier = pool_math.remaining_tier_copies(unit_cost, tier_total)
         p_slot = pool_math.p_slot_is_target(cost_odds, remaining_target, remaining_tier)
         row: dict[str, object] = {
             "others": others,
@@ -317,6 +329,8 @@ def robustness_scan(
         "verdicts": verdicts,
         "tolerance": tolerance,
         "commit_threshold": commit_threshold,
+        "tier_in_play": tier_base,
+        "tier_assumed": tier_in_play is None,
     }
 
 

@@ -67,6 +67,16 @@ VERIFIED_SHOP_ODDS: dict[tuple[int, int], float] = {
 #: 레벨 1~11 (XP 트랙은 10까지, 11은 보너스 레벨 효과로만 도달)
 MAX_LEVEL = 11
 
+#: 골드(XP 구매)로 도달 가능한 최대 레벨. 그 이상의 레벨업 비용은 모른다.
+MAX_BUYABLE_LEVEL = 10
+
+
+class UnknownLevelError(LookupError):
+    """레벨업 비용을 계산할 수 없을 때(검증 안 된 레벨).
+
+    조용히 0 을 돌려주면 레벨업 예산이 과대 계산된다. 모르면 모른다고 말한다.
+    """
+
 #: 레벨 도달 누적 XP (레벨 3 = 2 XP 기준 누적). 출처: tft.ninja "Leveling and XP"
 #:  - L3:2, L4:8, L5:18, L6:38, L7:74, L8:134, L9:202, L10:270
 #:  - 레벨당 필요 XP: 2/6/10/20/36/60/68/68
@@ -96,12 +106,29 @@ def level_up_gold(current_level: int, target_level: int, *, count_passive_xp: bo
 
     count_passive_xp=True 이면 `rounds` 라운드 동안 쌓이는 패시브 XP(라운드당 2)를
     비용에서 제외한다. 기본값은 False(보수적 = 비싸게 계산).
+
+    Raises
+    ------
+    UnknownLevelError
+        XP 트랙에 없는 레벨(11)로의 레벨업 비용은 **모른다**. 예전에는 레벨을
+        10 으로 클램프해 `level_up_gold(10, 11)` 이 0 을 돌려주었고, 그 결과
+        레벨업 예산이 과대 계산되었다.
+    ValueError
+        레벨이 범위 밖이다.
     """
+    if current_level < 1:
+        raise ValueError(f"레벨은 1 이상이어야 한다: {current_level}")
     if target_level <= current_level:
         return 0
-    current = min(max(current_level, 1), 10)
-    target = min(max(target_level, 1), 10)
-    xp_needed = CUMULATIVE_XP_BY_LEVEL[target] - CUMULATIVE_XP_BY_LEVEL[current]
+    if target_level > MAX_BUYABLE_LEVEL:
+        raise UnknownLevelError(
+            f"레벨 {target_level} 도달 XP 비용을 모른다(XP 트랙은 {MAX_BUYABLE_LEVEL} 까지이고, "
+            f"{MAX_LEVEL} 은 보너스 레벨 효과로만 도달한다). "
+            f"레벨업 계획을 {MAX_BUYABLE_LEVEL} 이하로 지정하거나 "
+            "set_data.CUMULATIVE_XP_BY_LEVEL 에 실제 값을 추가하세요."
+        )
+    # 여기까지 오면 current < target <= 10 이므로 표의 키가 반드시 존재한다.
+    xp_needed = CUMULATIVE_XP_BY_LEVEL[target_level] - CUMULATIVE_XP_BY_LEVEL[current_level]
     if count_passive_xp:
         xp_needed = max(0, xp_needed - PASSIVE_XP_PER_ROUND * rounds)
     return int(xp_needed * GOLD_PER_XP)

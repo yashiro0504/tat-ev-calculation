@@ -28,7 +28,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tftcalc import decision, lobby, pool_math, set_data  # noqa: E402
-from tftcalc.odds import ShopOdds, UnknownOddsError  # noqa: E402
+from tftcalc.odds import InvalidOddsError, ShopOdds, UnknownOddsError  # noqa: E402
 
 
 class TestSetData(unittest.TestCase):
@@ -37,6 +37,23 @@ class TestSetData(unittest.TestCase):
         self.assertEqual(set_data.TIER_POOLS[3].total_copies, 252)
         self.assertEqual(set_data.STAR_COPY_WEIGHTS[2], 3)
         self.assertEqual(set_data.STAR_COPY_WEIGHTS[3], 9)
+
+    def test_level_11_cost_is_unknown_not_zero(self):
+        """레벨 11 XP 비용은 모른다. 0 을 돌려주면 레벨업 예산이 과대 계산된다.
+
+        Regression: 예전엔 레벨을 10 으로 클램프해 ``level_up_gold(10, 11)`` 이
+        0 을 반환했다. MAX_LEVEL=11 로 선언해 놓고 비용은0 으로 나오는 상태였다.
+        """
+        with self.assertRaises(set_data.UnknownLevelError):
+            set_data.level_up_gold(10, 11)
+        with self.assertRaises(set_data.UnknownLevelError):
+            set_data.level_up_gold(9, 11)
+        self.assertEqual(set_data.level_up_gold(9, 10), 68)  # 정상 경로는 그대로
+        self.assertEqual(set_data.level_up_gold(11, 11), 0)  # 이미 그 레벨
+
+    def test_level_below_one_rejected(self):
+        with self.assertRaises(ValueError):
+            set_data.level_up_gold(0, 5)
 
 
 class TestBenchmarks(unittest.TestCase):
@@ -97,6 +114,95 @@ class TestOddsTable(unittest.TestCase):
         self.assertAlmostEqual(odds.cost_odds(7, 3), 0.35)
         self.assertAlmostEqual(odds.cost_odds(8, 4), 0.32)  # 파일 값이 우선
         self.assertTrue(odds.knows(10, 5))  # builtin 셀 유지
+
+    # ---- 검증(추정 금지) --------------------------------------------------
+    def _odds_file(self, payload: dict) -> "ShopOdds":
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "odds.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            return ShopOdds.from_json(path)
+
+    def test_json_rejects_out_of_range_percent(self):
+        """300% 를 그대로 받으면 계산기가 틀린 숫자를 정확한 척한다."""
+        with self.assertRaises(InvalidOddsError):
+            self._odds_file({"odds": {"8": {"4": 300}}})
+
+    def test_json_rejects_fraction_written_as_percent(self):
+        """0.30 이면 0.3% 가 된다. 소수 표기 실수를 조용히 허용하지 않는다."""
+        with self.assertRaises(InvalidOddsError):
+            self._odds_file({"odds": {"7": {"3": 0.30}}})
+
+    def test_json_rejects_level_row_over_100_percent(self):
+        """같은 레벨의 코스트 확률 합이 100% 를 넘을 수 없다."""
+        with self.assertRaises(InvalidOddsError):
+            self._odds_file({"odds": {"8": {"3": 70, "4": 60}}})
+
+    def test_json_accepts_valid_percent_values(self):
+        odds = self._odds_file({"odds": {"7": {"3": 35, "4": 20}}})
+        self.assertAlmostEqual(odds.cost_odds(7, 3), 0.35)
+        self.assertAlmostEqual(odds.cost_odds(7, 4), 0.20)
+
+    def test_shipped_assumed_file_sums_to_100_percent(self):
+        """배포된 가정값 파일이 자기가 주장하는 '합계 100%' 를 지키는지 검사한다.
+
+        Regression: 레벨 8 행이 105% 였다(20+25+25+30+5).
+        """
+        path = ROOT / "data" / "set18_shop_odds_assumed.json"
+        if not path.exists():
+            self.skipTest("set18_shop_odds_assumed.json 없음")
+        odds = ShopOdds.from_json(path)  # InvalidOddsError 면 여기서 실패
+        rows: dict[int, float] = {}
+        for (level, _cost), value in odds.cells.items():
+            rows[level] = rows.get(level, 0.0) + value
+        self.assertTrue(rows, "읽은 확률표가 비어 있다")
+        for level, total in rows.items():
+            self.assertLessEqual(total, 1.0 + 1e-9, f"Lv{level} 합계 {total * 100:.1f}%")
+
+
+class TestGoldNeededBinarySearch(unittest.TestCase):
+    """골드 예산 탐색이 이진 탐색으로 바뀌어도 결과가 선형 스캔과 같은지(L2)."""
+
+    ODDS = ShopOdds(cells={(8, 4): 0.30}, source="테스트")
+    KWARGS = dict(level=8, unit_cost=4, remaining_target=7, remaining_tier=137, need=2)
+
+    def _linear(self, target: float, max_budget: int, trials: int) -> tuple[int, float]:
+        """개선 전 구현(선형 스캔)을 그대로 재현해 참조값으로 쓴다."""
+        last = 0.0
+        for gold in range(max_budget + 1):
+            last = pool_math.simulate_roll_down(
+                self.ODDS, budget=gold, trials=trials, seed=99, **self.KWARGS
+            ).p_complete
+            if last >= target:
+                return gold, last
+        return max_budget, last
+
+    def test_matches_linear_scan_reference(self):
+        for target in (0.5, 0.8):
+            with self.subTest(target=target):
+                expected = self._linear(target, 120, 400)
+                got = pool_math.gold_needed_for_probability(
+                    self.ODDS, target_probability=target, max_budget=120,
+                    trials=400, **self.KWARGS,
+                )
+                self.assertEqual(got, expected)
+
+    def test_unreachable_target_returns_max_budget(self):
+        gold, probability = pool_math.gold_needed_for_probability(
+            self.ODDS, target_probability=0.999999, max_budget=20,
+            trials=200, **self.KWARGS,
+        )
+        self.assertEqual(gold, 20)
+        self.assertLess(probability, 0.999999)
+
+    def test_probability_is_monotone_in_budget(self):
+        """이진 탐색의 전제(단조)를 실측으로 고정한다."""
+        previous = -1.0
+        for budget in range(0, 121, 10):
+            current = pool_math.simulate_roll_down(
+                self.ODDS, budget=budget, trials=400, seed=99, **self.KWARGS
+            ).p_complete
+            self.assertGreaterEqual(current + 1e-12, previous)
+            previous = current
 
 
 class TestMonteCarlo(unittest.TestCase):
@@ -194,6 +300,26 @@ class TestLobbySnapshot(unittest.TestCase):
     def test_unknown_star_is_rejected(self):
         with self.assertRaises(ValueError):
             lobby.UnitInPlay(champion="Ahri", cost=4, star=4).copies
+
+    def test_items_held_is_not_counted_as_champion(self):
+        """아이템을 챔피언으로 집계하면 풀 소모량이 오염된다.
+
+        Regression: ``from_dict`` 가 ``items_held`` 도 기물처럼 순회했다.
+        아이템 이름이 챔피언으로 분류돼 남은 사본 계산이 틀어졌다.
+        """
+        raw = {
+            "players": [
+                {
+                    "name": "나",
+                    "is_me": True,
+                    "board": [{"champion": "Ahri", "cost": 4, "star": 1}],
+                    "bench": [],
+                    "items_held": [{"name": "Warmog's Armor"}],
+                }
+            ]
+        }
+        snapshot = lobby.LobbySnapshot.from_dict(raw)
+        self.assertEqual(list(snapshot.copies_in_play()), ["Ahri"])
 
 
 class TestDecision(unittest.TestCase):

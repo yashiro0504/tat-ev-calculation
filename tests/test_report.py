@@ -80,9 +80,27 @@ class TestReportSections(unittest.TestCase):
         self.assertIn("부족", output)
         self.assertIn("세이빙 연장", output)
 
-    def test_report_invalid_round(self):
-        with self.assertRaises(ValueError):
-            run_report("--round", "5", "--gold", "10", "--level", "6", "--hp", "50")
+    def test_report_invalid_round_is_guidance_not_traceback(self):
+        """라운드 형식 오류는 스택 트레이스가 아니라 [입력 오류] 로 안내한다.
+
+        Regression: 예전엔 ValueError 가 cli.main 밖으로 터져 트레이스백이 나왔다.
+        """
+        code, output = run_report(
+            "--round", "5", "--gold", "10", "--level", "6", "--hp", "50"
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("[입력 오류]", output)
+        self.assertIn("4-2", output)  # 올바른 예시까지 함께 안내
+
+    def test_target_round_beyond_horizon_is_guidance(self):
+        """목표가 MAX_HORIZON 밖이면 조용히 fallback 하지 않고 오류로 알린다."""
+        code, output = run_report(
+            "--round", "4-1", "--gold", "60", "--level", "7", "--hp", "40",
+            "--target-round", "11-1",
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("[입력 오류]", output)
+        self.assertIn("--rounds", output)
 
 
 if __name__ == "__main__":

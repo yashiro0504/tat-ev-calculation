@@ -17,12 +17,18 @@ UI 구조(1920x1080, 보더리스 기준)
     하단   : 상점 5칸
 
 여기서는 도구가 실제로 쓰는 **벤치/상점**을 정확히 정의하고, 보드는 대략값으로 둔다.
+
+역할 분담: 좌표 정의와 인식(read_slots)이 여기서 맡고, **스냅샷 dict를 만드는 일은
+``cv/scan.py``** 가 맡는다(코스트 조회·성급 지정·상대 보존까지). 예전에 여기 있던
+``build_snapshot`` 은 ``cost=None`` 을 만들어 ``LobbySnapshot.from_dict`` 가
+``TypeError`` 로 실패했는데, 실제 경로에서 쓰이지 않던 죽은 코드여서 삭제했다.
 """
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from .fingerprint import TemplateSet, classify
 from .screen import Image
@@ -75,31 +81,78 @@ def to_pixels(
     )
 
 
-def load_overrides(path: str | Path | None = None) -> dict[str, list[list[float]]]:
-    """좌표 오버라이드 파일(JSON)을 읽는다. 없으면 빈 dict."""
+AREA_KEYS = {"bench", "shop", "board"}
+INFO_KEY = "info"
+
+
+def load_overrides(path: str | Path | None = None) -> dict[str, Any]:
+    """좌표 오버라이드 파일(JSON)을 읽는다. 없으면 빈 dict.
+
+    형식::
+
+        {
+          "bench": [[x, y, w, h], ...],   # 칸 수가 기본값과 정확히 일치해야 한다
+          "shop":  [[x, y, w, h], ...],
+          "board": [[x, y, w, h], ...],
+          "info":  {"gold": [x, y, w, h], "level": [x, y, w, h]}
+        }
+
+    알 수 없는 키는 조용히 무시하지 않는다 — 오타 하나가 좌표 전체 누락으로
+    이어지고, 눈에 띄지 않으면 '인식 실패' 만 보여 원인을 찾지 못하기 때문이다.
+    """
     target = Path(path) if path else DEFAULT_LAYOUT_PATH
     if not target.exists():
         return {}
     raw = json.loads(target.read_text(encoding="utf-8"))
-    return {
-        key: [[float(value) for value in box] for box in boxes]
-        for key, boxes in raw.items()
-        if isinstance(boxes, list) and key in {"bench", "shop", "board"}
-    }
+    out: dict[str, Any] = {}
+    for key, value in raw.items():
+        if key.startswith("_"):
+            continue
+        if key in AREA_KEYS:
+            if not isinstance(value, list):
+                raise ValueError(f"'{key}' 는 좌표 목록([[x, y, w, h], ...])이어야 한다.")
+            out[key] = [[float(item) for item in box] for box in value]
+        elif key == INFO_KEY:
+            if not isinstance(value, dict):
+                raise ValueError(f"'{INFO_KEY}' 는 {{이름: [x, y, w, h]}} 형태여야 한다.")
+            out[INFO_KEY] = {
+                name: [float(item) for item in box] for name, box in value.items()
+            }
+        else:
+            raise ValueError(
+                f"좌표 파일에 알 수 없는 키 '{key}' 가 있다. "
+                f"가능한 키: {', '.join(sorted(AREA_KEYS | {INFO_KEY}))}"
+            )
+    return out
 
 
 def resolve(
-    name: str, overrides: dict[str, list[list[float]]] | None = None
+    name: str, overrides: dict[str, Any] | None = None
 ) -> list[tuple[str, tuple[float, float, float, float]]]:
-    """이름('bench'|'shop'|'board')에 대한 좌표 목록(오버라이드 반영)."""
+    """이름('bench'|'shop'|'board')에 대한 좌표 목록(오버라이드 반영).
+
+    오버라이드 칸 수가 기본값과 다르면 **조용히 자르지 않고** 오류를 던진다.
+    하나라도 빠지면 그 칸이 아예 안 읽히는데, 눈에 띄지 않으면 '인식 실패'로만
+    보여 사용자가 좌표 누락이라는 원인을 찾지 못한다.
+    """
     defaults = {"bench": BENCH_SLOTS, "shop": SHOP_SLOTS, "board": BOARD_SLOTS}[name]
     if not overrides or name not in overrides:
         return list(defaults)
     boxes = overrides[name]
-    return [
-        (defaults[index][0], tuple(box))  # type: ignore[arg-type]
-        for index, box in enumerate(boxes[: len(defaults)])
-    ]
+    if len(boxes) != len(defaults):
+        raise ValueError(
+            f"'{name}' 좌표는 {len(defaults)}개가 필요한데 {len(boxes)}개다. "
+            "칸 수가 맞지 않으면 일부 칸이 조용히 빠진다."
+        )
+    resolved: list[tuple[str, tuple[float, float, float, float]]] = []
+    for index, box in enumerate(boxes):
+        if len(box) != 4:
+            raise ValueError(
+                f"'{name}' 좌표 {index + 1}번은 (x, y, w, h) 4개 값이어야 한다 "
+                f"(받은 값 {len(box)}개)."
+            )
+        resolved.append((defaults[index][0], tuple(box)))  # type: ignore[arg-type]
+    return resolved
 
 
 def read_slots(
@@ -107,7 +160,7 @@ def read_slots(
     template_set: TemplateSet,
     *,
     which: tuple[str, ...] = ("bench", "shop"),
-    overrides: dict[str, list[list[float]]] | None = None,
+    overrides: dict[str, Any] | None = None,
 ) -> list[dict[str, object]]:
     """지정한 영역들의 분류 결과를 돌려준다(칸별)."""
     results: list[dict[str, object]] = []
@@ -127,20 +180,28 @@ def read_slots(
     return results
 
 
-def build_snapshot(
-    read_results: list[dict[str, object]],
-    *,
-    my_units: list[dict[str, object]] | None = None,
-    name: str = "나",
-) -> dict[str, object]:
-    """인식 결과 -> LobbySnapshot 형식의 dict(내 보드/벤치만).
+def resolve_info(
+    overrides: dict[str, Any] | None = None,
+) -> dict[str, tuple[float, float, float, float]]:
+    """숫자/게이지 영역 좌표(골드/레벨/HP/라운드, 오버라이드 반영).
 
-    주의: 이 도구는 **내 화면만** 읽는다. 상대 보드는 스카우팅(GEP/수동)으로 채운다.
-    성급(star)은 아이콘만으로는 알 수 없으므로 기본 1로 두고, 필요하면 사용자가 올린다.
+    숫자를 한 자리라도 틀리면 골드 계획이 통째로 틀어지므로 이 영역들이야말로
+    캘리브레이션 대상 1순위다. 그런데 예전에는 이들을 ``load_overrides`` 가
+    아예 읽지 못해 파일로 보정할 방법이 없었다. 미지정 영역은 기본값을 쓴다.
     """
-    units = my_units if my_units is not None else []
-    if my_units is None:
-        for item in read_results:
-            if item.get("name") not in (None, "unknown") and not item.get("needs_review"):
-                units.append({"champion": item["name"], "cost": None, "star": 1})
-    return {"players": [{"name": name, "is_me": True, "board": units, "bench": []}]}
+    merged = dict(INFO_REGIONS)
+    if not overrides or INFO_KEY not in overrides:
+        return merged
+    given = overrides[INFO_KEY]
+    for name, box in given.items():
+        if name not in INFO_REGIONS:
+            raise ValueError(
+                f"알 수 없는 숫자 영역 '{name}'. 가능한 것: {', '.join(sorted(INFO_REGIONS))}"
+            )
+        if len(box) != 4:
+            raise ValueError(
+                f"'{INFO_KEY}.{name}' 는 (x, y, w, h) 4개 값이어야 한다 "
+                f"(받은 값 {len(box)}개)."
+            )
+        merged[name] = (box[0], box[1], box[2], box[3])
+    return merged

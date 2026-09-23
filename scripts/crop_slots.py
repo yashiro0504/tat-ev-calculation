@@ -6,10 +6,10 @@ TFT 전용 유닛(Sentinel, Krug, Pebbles, Kobuko, Cinderling, Brambleback, Mama
 Riot Data Dragon 에 아이콘이 없다. 게임 화면에서 그 칸을 잘라 **파일명을 유닛 이름으로 바꾸면**
 곧바로 템플릿이 된다.
 
-    py -3 scripts/crop_slots.py                      # 전체화면 캡처 -> data/crops/*.bmp
-    py -3 scripts/crop_slots.py --in shot.bmp --area shop,bench
+    python scripts/crop_slots.py                      # 전체화면 캡처 -> data/crops/*.bmp
+    python scripts/crop_slots.py --in shot.bmp --area shop,bench
     (그다음 data/crops/shop_3.bmp -> data/crops/Krug.bmp 로 이름 변경)
-    py -3 scripts/build_templates.py --from-crops data/crops
+    python scripts/build_templates.py --from-crops data/crops
 
 주의: 좌표(layout.py)가 실제 화면과 어긋나면 잘린 그림이 엉뚱하게 나온다.
       그럴 때는 `scripts/check_capture.py --out shot.bmp` 로 화면을 먼저 확인한다.
@@ -61,7 +61,7 @@ def main(argv: list[str] | None = None) -> int:
             count += 1
     print(f"\n저장: {output} 에 {count}개 BMP")
     print("  -> 필요한 칸을 유닛 이름으로 바꾸세요 (예: shop_3.bmp -> Krug.bmp)")
-    print("  -> 그다음: py -3 scripts/build_templates.py --from-crops data/crops")
+    print("  -> 그다음: python scripts/build_templates.py --from-crops data/crops")
     return 0
 
 

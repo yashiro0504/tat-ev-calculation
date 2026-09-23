@@ -1,7 +1,7 @@
 # 작업 이어하기 가이드 (집에서 이어서)
 
 > 이 문서는 **다른 PC에서 바로 이어서 작업**하기 위한 런북입니다.
-> 현재 상태: 커밋 `e3a9651` (main, origin과 동기화됨), 테스트 110개 전부 통과, CLI 13개 명령, 외부 의존성 0개.
+> 현재 상태: 커밋 `1b7f362` (main), 테스트 198개 전부 통과, CLI 13개 명령, 외부 의존성 0개.
 
 ---
 
@@ -10,21 +10,29 @@
 ```powershell
 git clone https://github.com/yashiro0504/tat-ev-calculation.git
 cd tat-ev-calculation          # (저장소 이름 그대로) 또는 tft-ev-calculator
-py -3 -m tftcalc.cli selftest  # 환경/데이터 자기점검
+python -m tftcalc.cli selftest  # 환경/데이터 자기점검
 ```
 
 **설치할 것이 없습니다.** Python 3.12+ 표준 라이브러리만 씁니다(ctypes 포함). `requirements.txt`를 만들지 마세요 — 무의존성이 이 프로젝트의 장점입니다.
 
-전체 테스트(8개 파일, 110개) 한 줄:
+전체 테스트(12개 파일, 198개):
 ```powershell
-(py -3 tests\test_pool_math.py & py -3 tests\test_comp.py & py -3 tests\test_items.py & `
- py -3 tests\test_economy.py & py -3 tests\test_survival.py & py -3 tests\test_report.py & `
- py -3 tests\test_cv.py & py -3 tests\test_scan.py) 2>&1 | Select-String 'Ran |^OK|FAILED'
+python -m unittest discover -s tests -t .      # 가장 간단(198 tests, OK)
 ```
-기대 출력: `Ran 20/15/13/14/12/5/20/11 tests` + 각각 `OK` (= 110개).
+`tests/__init__.py` 를 추가해 discover 가 동작합니다. 파일별로 돌리려면:
 
-> **함정 1**: Windows의 `python`은 Microsoft Store 스텁일 수 있습니다. 반드시 `py -3`.
-> **함정 2**: 한글 경로/출력 때문에 깨져 보이면 `cmd /c "set PYTHONIOENCODING=utf-8 && py -3 ..."` 로 실행하세요.
+```powershell
+(python tests\test_pool_math.py & python tests\test_comp.py & python tests\test_items.py & `
+ python tests\test_economy.py & python tests\test_survival.py & python tests\test_report.py & `
+ python tests\test_cv.py & python tests\test_scan.py & python tests\test_cli.py & `
+ python tests\test_render.py & python tests\test_rules.py & python tests\test_trials_defaults.py) `
+ 2>&1 | Select-String 'Ran |^OK|FAILED'
+```
+기대 출력: `Ran 31/18/15/26/16/6/27/11/20/16/8/4 tests` + 각각 `OK` (= 198개).
+
+> **함정 1**: 실행기는 PC마다 다르다 — `python` 이 Microsoft Store 스텁이면 `py -3`,
+> `py` 런처가 없으면 `python`. 아래 예시는 **`python` 기준**이다.
+> **함정 2**: 한글 경로/출력 때문에 깨져 보이면 `cmd /c "set PYTHONIOENCODING=utf-8 && python ..."` 로 실행하세요.
 
 ---
 
@@ -34,10 +42,10 @@ py -3 -m tftcalc.cli selftest  # 환경/데이터 자기점검
 
 ```powershell
 # 1) TFT를 창모드(또는 전체화면 창모드)로 띄우고 상점이 보이는 상태에서
-py -3 scripts\check_capture.py --out shot.bmp                 # 캡처 + 저장(인식 시험 포함)
-py -3 scripts\check_capture.py --window "Teamfight Tactics" --out shot.bmp   # 특정 창만
-py -3 scripts\check_capture.py --in shot.bmp --shop           # 저장본으로 상점 5칸 인식
-py -3 scripts\check_capture.py --in shot.bmp --no-templates   # 캡처 상태만 확인
+python scripts\check_capture.py --out shot.bmp                 # 캡처 + 저장(인식 시험 포함)
+python scripts\check_capture.py --window "Teamfight Tactics" --out shot.bmp   # 특정 창만
+python scripts\check_capture.py --in shot.bmp --shop           # 저장본으로 상점 5칸 인식
+python scripts\check_capture.py --in shot.bmp --no-templates   # 캡처 상태만 확인
 ```
 
 `--in shot.bmp --shop` 이 출력하는 표를 그대로 쓰면 됩니다(실측 예):
@@ -66,9 +74,9 @@ py -3 scripts\check_capture.py --in shot.bmp --no-templates   # 캡처 상태만
 
 **확인(게임 아이콘 그대로 인식되는지)**:
 ```powershell
-py -3 -m tftcalc.cli scan --templates data\templates_set18.json --in shot.bmp --area bench,shop
-py -3 -m tftcalc.cli scan --templates data\templates_set18.json --in shot.bmp --area bench,shop --out data\my_board.json
-py -3 -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3 `
+python -m tftcalc.cli scan --templates data\templates_set18.json --in shot.bmp --area bench,shop
+python -m tftcalc.cli scan --templates data\templates_set18.json --in shot.bmp --area bench,shop --out data\my_board.json
+python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3 `
     --scan --templates data\templates_set18.json --scan-in shot.bmp --scan-out data\my_board.json `
     --snapshot data\lobby.json --comps data\comps_set18.json `
     --odds-file data\set18_shop_odds_assumed.json --components rod:2,gloves
@@ -82,10 +90,10 @@ py -3 -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3 
 1. 벤치/상점 **모든 칸**의 인식 결과가 눈으로 본 것과 일치(칸이 어긋나면 이웃 칸 아이콘이 섞여 들어옵니다).
 2. 게임 아이콘이 Data Dragon 아이콘과 달라 유사도가 낮게(예: 70%대) 나오면 → **크롭 템플릿** 경로:
    ```powershell
-   py -3 scripts\crop_slots.py --in shot.bmp --area shop,bench --out data\crops
+   python scripts\crop_slots.py --in shot.bmp --area shop,bench --out data\crops
    #   -> data\crops\shop_1.bmp ... bench_7.bmp (칸별 크롭)
    #   파일 이름을 유닛 이름으로 바꾼다 (파일명이 곧 라벨): shop_3.bmp -> Krug.bmp
-   py -3 scripts\build_templates.py --from-crops data\crops --out data\templates_set18.json
+   python scripts\build_templates.py --from-crops data\crops --out data\templates_set18.json
    ```
    게임 렌더링(비용 테두리·발광)까지 지문에 반영되어 유사도가 95%+로 올라갑니다.
    TFT 전용 유닛(Krug, Pebbles, Cinderling 등 Data Dragon에 없는 것)은 **이 방법이 유일**합니다.
@@ -128,7 +136,7 @@ py -3 -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3 
 **통과 기준(게이트)**
 1. 내 보드 성급 인식이 **수동 대조와 100% 일치**(20판 표본). 틀린 칸은 조용히 넘기지 말고 "확인 필요"로.
 2. 골드/레벨/HP 숫자 오인식 **0건**(한 자리라도 틀리면 골드 계획이 통째로 틀어짐). 실패 시 그냥 `None`.
-3. 기존 110개 테스트 + 신규 OCR 테스트 전부 통과.
+3. 기존 198개 테스트 + 신규 OCR 테스트 전부 통과.
 
 > 원칙 유지: 숫자를 못 읽으면 **0이나 추정값을 넣지 말고 `None` + 경고**. "모르면 모른다고 말한다"가 이 프로젝트의 핵심 자산입니다.
 
@@ -148,8 +156,9 @@ py -3 -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3 
 
 ## 4. 작업 규칙 (지키면 되돌리기 쉬움)
 
-1. **커밋 전**: 해당 테스트 파일 실행 → 전체 110개 `OK` 확인. 깨진 채로 커밋하지 않습니다.
-2. **미지 데이터 추정 금지**: 모르면 `UnknownOddsError` / `UnknownRecipeError` / `unknown` / `None`.
+1. **커밋 전**: 해당 테스트 파일 실행 → 전체 198개 `OK` 확인. 깨진 채로 커밋하지 않습니다.
+2. **미지 데이터 추정 금지**: 모르면 `UnknownOddsError` / `InvalidOddsError` / `UnknownRecipeError`
+   / `UnknownLevelError` / `UnknownIncomeError` / `unknown` / `None`.
 3. **4축 분리 유지**: 유닛(풀) · 아이템(부품) · 골드(시간) · 체력(생존)을 하나의 점수로 합치지 않습니다(차원 오류).
 4. **의존성 추가 금지**: 표준 라이브러리만. (`ctypes` GDI 캡처, 직접 쓴 PNG 디코더/BMP I/O)
 5. **커밋/푸시**:
@@ -159,7 +168,8 @@ py -3 -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3 
    git push
    ```
    `data/layout_1920x1080.json`, `*.bmp`, `data/my_board.json`, `data/crops/`는 `.gitignore`로 제외돼 있습니다(개인 캘리브레이션/산출물). 필요하면 `git add -f`.
-6. **실행기**: `py -3` (Store 스텁 주의). 한글 깨지면 `cmd /c "set PYTHONIOENCODING=utf-8 && py -3 ..."`.
+6. **실행기**: 예시는 `python` 기준. Store 스텁이면 `py -3`, `py` 가 없으면 `python`.
+   한글 깨지면 `cmd /c "set PYTHONIOENCODING=utf-8 && python ..."`.
 
 ---
 
@@ -167,10 +177,10 @@ py -3 -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3 
 
 | 항목 | 값 |
 |---|---|
-| 최신 커밋 | `e3a9651` (main, origin과 동기화됨) — 직전 커밋에서 캘리브레이션 도구 크래시(`check_capture.py`)를 수정 |
-| 테스트 | **110개 전부 통과** — pool 20 / comp 15 / items 13 / economy 14 / survival 12 / report 5 / cv 20 / scan 11 |
+| 최신 커밋 | `1b7f362` (main) — `e3a9651` 에서 캘리브레이션 도구 크래시(`check_capture.py`) 수정 |
+| 테스트 | **198개 전부 통과** — pool 31 / comp 18 / items 15 / economy 26 / survival 16 / report 6 / cv 27 / scan 11 / cli 20 / render 16 / rules 8 / trials_defaults 4 |
 | CLI 명령 | **13개** — `odds selftest unit lobby outlook items plan survive report scan comp sensitivity robustness` |
-| 모듈 | `pool_math` `comp` `items` `economy` `survival` `lobby` `odds` `decision` `set_data` `cli` + `cv/{screen,fingerprint,layout,scan}` |
+| 모듈 | `pool_math` `comp` `items` `economy` `survival` `lobby` `odds` `decision` `set_data` `trials` `render` `rules` `cli` + `cv/{screen,fingerprint,layout,scan}` |
 | 스크립트 | `build_templates` `check_capture` `crop_slots` `fetch_unit_costs` `fetch_item_recipes` `simulate_scan` |
 | 데이터 | 메타 덱 6 · 유닛 코스트 36 · 아이템 조합식 31 · 아이콘 지문 28 |
 | 의존성 | **0개** (Python 3.12+ 표준 라이브러리) |
