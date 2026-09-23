@@ -2,7 +2,7 @@
 
 > 이 문서는 **다른 PC에서 바로 이어서 작업**하기 위한 런북입니다.
 > 현재 상태: 커밋 `dacdf41` (main, origin과 동기화) + **미커밋 작업 있음**(아래 §0.5),
-> 테스트 **272개** 전부 통과, CLI 13개 명령, 외부 의존성 0개.
+> 테스트 **273개** 전부 통과, CLI 13개 명령, 외부 의존성 0개.
 > **인식은 아직 실게임에서 안 됩니다** — 좌표 캘리브레이션이 남았습니다(§1).
 
 ---
@@ -17,9 +17,9 @@ python -m tftcalc.cli selftest  # 환경/데이터 자기점검
 
 **설치할 것이 없습니다.** Python 3.12+ 표준 라이브러리만 씁니다(ctypes 포함). `requirements.txt`를 만들지 마세요 — 무의존성이 이 프로젝트의 장점입니다.
 
-전체 테스트(14개 파일, 272개):
+전체 테스트(14개 파일, 273개):
 ```powershell
-python -m unittest discover -s tests -t .      # 가장 간단(272 tests, OK)
+python -m unittest discover -s tests -t .      # 가장 간단(273 tests, OK)
 ```
 `tests/__init__.py` 를 추가해 discover 가 동작합니다. 파일별로 돌리려면:
 
@@ -31,7 +31,7 @@ python -m unittest discover -s tests -t .      # 가장 간단(272 tests, OK)
  python tests\test_ocr.py) `
  2>&1 | Select-String 'Ran |^OK|FAILED'
 ```
-기대 출력: `Ran 39/18/15/26/16/6/35/29/32/20/8/4/24 tests` + 각각 `OK` (= 272개).
+기대 출력: `Ran 39/18/15/26/16/6/35/30/32/20/8/4/24 tests` + 각각 `OK` (= 273개).
 
 > **함정 1**: 실행기는 PC마다 다르다 — `python` 이 Microsoft Store 스텁이면 `py -3`,
 > `py` 런처가 없으면 `python`. 아래 예시는 **`python` 기준**이다.
@@ -47,6 +47,39 @@ python -m unittest discover -s tests -t .      # 가장 간단(272 tests, OK)
 | `STAR_BAND` 0.76 → **0.84** (지문 경계 아래 + 안전 여유 2%p) | `tftcalc/cv/layout.py`, `tests/test_cv.py` | 별 픽셀이 지문 내부(하단 18% 인셋)에 들어오면 **같은 챔피언이 1성 1.0000 / 3성 0.6341** 로 갈렸다. `MIN_SCORE` 0.85 와 겹치면 2·3성 칸이 통째로 'unknown' 이 된다(`test_three_stars_detected` 가 회귀 고정). |
 | `scan --window`, `report --scan-window` 신규 | `tftcalc/cli.py`, `tftcalc/cv/screen.py`(`find_client`/`capture_client`/`_title_score`) | 창모드에서 전체 화면 캡처로는 비율 좌표가 어긋난다. **클라이언트 영역**만 캡처하고, 창 제목은 뒤 공백·대소문자·부분 일치를 허용(실제 TFT 창 제목이 `'TFT  '` 라서 `FindWindowW` 정확 일치가 실패했다). |
 | `check_capture --window` 도 클라이언트 영역 | `scripts/check_capture.py` | 캘리브레이션용 좌표가 타이틀바(31px)·테두리(8px)만큼 밀리면 **잘못된 보정값**을 저장하게 된다. |
+| **`scan`/`report` 가 좌표 보정 파일을 읽지 않던 버그 수정** + `--layout`/`--scan-layout` 추가 | `tftcalc/cli.py`, `tests/test_scan.py` | 문서(§1)가 안내하는 `data/layout_1920x1080.json` 을 **실사용 경로가 무시**했다(`check_capture` 만 읽었다). 보정을 아무리 해도 `scan` 은 기본 좌표로 인식해 '원인 없는 인식 실패'만 보였다. 회귀 테스트로 고정. |
+
+### 실게임에서 측정한 좌표 (2026-09-23, 창모드 클라이언트 2120x1191)
+자동 검출(상점 카드 세로 테두리 / 벤치 금색 분리선) + 눈으로 검증(박스 오버레이 대조):
+
+| 영역 | 클라이언트 픽셀 | 비율(0~1) | 검출 근거 |
+|---|---|---|---|
+| 상점 5칸 | x = **596 + 223i**, y **1008**, 223x176 | x 0.28113 + 0.10519i, y 0.84635, 0.10519 x 0.14778 | 카드 테두리 검출값이 5장 카드와 정확히 일치 |
+| 벤치 9칸 | x = **550 + 130i**, y **807**, 130x122 | x 0.25943 + 0.06132i, y 0.67758, 0.06132 x 0.10244 | 금색 분리선에 후보 박스가 정확히 일치 |
+
+* 이 값은 `data/layout_1920x1080.json`(개인 캘리브레이션, .gitignore)에 저장해 두었다.
+  이제 `scan --layout data\layout_1920x1080.json` / `report --scan-layout ...` 로 실사용 경로에서도 적용된다.
+* **기존 기본값은 이 UI와 많이 어긋난다**(상점 x 가 약 300px 왼쪽, 벤치 y 가 약 150px 아래).
+  기본값을 갱신하려면 **다른 해상도(1920x1080 전체화면 등)에서 한 번 더 측정**해 비율이 해상도 무관한지 확인해야 한다(아직 미확인).
+
+### ⚠️ 세 번째 발견 — Data Dragon 정사각 아이콘은 게임 카드 아트와 안 맞는다
+좌표를 정확히 맞춘 뒤 실게임에서 측정한 결과:
+
+| 대상 | 유사도 |
+|---|---|
+| 상점 카드(실제 챔피언) vs DDragon 템플릿 | **0.53~0.63** |
+| **빈 상점 칸** vs DDragon 템플릿 | **0.72** (내용이 없는데 더 높다!) |
+| 벤치 유닛(3D 모델) vs DDragon 템플릿 | **0.48~0.67** |
+
+* 즉 **바닥선 0.85 로는 절대 인식되지 않는다.** 좌표보다 이 문제가 더 크다.
+* 같은 화면에서 크롭을 서로 대조하면:
+  * 한 라운드 안에서 상점 카드는 **완전히 정적**(0.4초 간격 자기 유사도 **1.000**, 픽셀 차이 ~0)
+  * 벤치는 대체로 정적(0.97~0.999), 유닛이 움직이는 칸은 0.76~0.88
+* 따라서 다음 단계는 **게임 화면 크롭 템플릿**(`scripts/crop_slots.py` → `build_templates.py --from-crops`)이다.
+  Data Dragon 은 "게임에 없는 유닛 보충"이 아니라 **보조**로만 쓴다.
+* 함정: 아이템/증강 **"하나 선택" 화면 등에서는 상점·벤치가 아예 없다**(그때 크롭하면 경기장 바닥이 저장된다).
+  크롭 전에 `check_capture.py --in shot.bmp --shop` 으로 상점 칸 분산이 2000 이상인지 확인할 것.
+
 
 **실게임 1회 측정(창모드, 클라이언트 2120x1191)** — 도구가 값을 만들어내지 않는지 확인:
 ```powershell
@@ -62,9 +95,28 @@ python -m tftcalc.cli scan --templates data\templates_set18.json --window TFT --
 
 ---
 
-## 1. 남은 작업 A — 좌표 캘리브레이션 (게임 켜고 10분, 최우선)
+## 1. 남은 작업 A — 실게임 템플릿 만들기 (좌표는 끝났다)
 
-`tftcalc/cv/layout.py`의 좌표는 **공개 UI 배치를 보고 넣은 추정값**입니다. 실제 화면에서 1회만 맞추면 됩니다.
+좌표는 §0.5 에서 실측해 `data\layout_1920x1080.json` 에 넣었다(상점/벤치 모두 눈으로 검증).
+남은 것은 **게임 카드 아트로 템플릿을 만드는 일**이다 — Data Dragon 아이콘은 실게임에서
+0.53~0.72 밖에 안 나와 바닥선(0.85)을 못 넘는다.
+
+```powershell
+# 1) 상점이 보이는 "일반 인게임" 상태에서 (아이템/증강 선택 화면에서는 상점이 없다!)
+python scripts\check_capture.py --window TFT --out shot.bmp --shop   # shop_1 분산이 2000 이상인지 확인
+# 2) 칸을 1:1로 크롭해서 저장 (data\crops\shop_1.bmp ... bench_9.bmp)
+python scripts\crop_slots.py --in shot.bmp --area shop,bench --layout data\layout_1920x1080.json
+# 3) 파일 이름을 유닛 이름으로 바꾼다: shop_3.bmp -> Krug.bmp (카드 이름표를 보고 확정)
+# 4) 크롭 -> 템플릿
+python scripts\build_templates.py --from-crops data\crops --out data\templates_ingame.json
+# 5) 실게임 인식 확인 (한 라운드 안에서는 카드가 정적이므로 같은 챔피언이 다시 보이면 매칭된다)
+python -m tftcalc.cli scan --templates data\templates_ingame.json --window TFT --area shop,bench `
+    --layout data\layout_1920x1080.json
+```
+
+실측 근거(2026-09-23): 한 라운드 안에서 상점 카드 크롭의 프레임 간 변화는 **0**(자기 유사도 1.000),
+벤치는 0.97~0.999(움직이는 유닛은 0.76~0.88)였다. 즉 **크롭 템플릿은 쓸 수 있다**.
+챔피언별로 한 번씩만 모으면 그 뒤로는 그 챔피언이 상점에 뜰 때마다 인식된다.
 
 ```powershell
 # 1) TFT를 창모드(또는 전체화면 창모드)로 띄우고 상점이 보이는 상태에서
@@ -76,29 +128,35 @@ python scripts\check_capture.py --in shot.bmp --no-templates   # 캡처 상태�
 > 창모드면 **반드시 `--window TFT`** 를 쓰세요. 전체 화면 캡처는 게임이 화면 일부만 차지해
 > 비율 좌표가 어긋납니다(창 제목은 `TFT` 로 충분 — 뒤 공백/대소문자/부분 일치 허용).
 
-`--in shot.bmp --shop` 이 출력하는 표를 그대로 쓰면 됩니다(실측 예):
+`--in shot.bmp --shop` 이 출력하는 표를 그대로 쓰면 됩니다(실측 예 — 좌표는 1920x1080 기준):
 ```
         영역              인식      점수      마진  픽셀(x,y,w,h)  판정
     shop_1            Ahri    0.97    0.24   270, 972, 253, 95  확정
     shop_2         Morgana    0.97    0.28   551, 972, 253, 95  확정
     shop_5         unknown    0.00    0.00  1394, 972, 253, 95  확인 필요
 ```
+> 위 표는 **합성 화면(Data Dragon 아이콘을 좌표에 붙임)** 에서의 값이다. 실게임 카드 아트로는
+> 0.53~0.72 밖에 안 나온다(§0.5 세 번째 발견). 실게임에서 "확정"이 하나도 없으면 그건 정상이고,
+> 다음 단계는 크롭 템플릿이다.
+
 `픽셀(x,y,w,h)` 열이 **보정용 좌표**입니다. `shot.bmp`를 열어 사각형이 아이콘과 어긋나면,
 그 차이를 `[0,1]` 비율로 환산해 아래 JSON에 넣으면 됩니다(칸 순서는 왼쪽→오른쪽).
 
-`shot.bmp`를 열어 **오버레이 사각형이 각 칸 아이콘과 정확히 겹치는지** 봅니다.
-어긋나면 `data\layout_1920x1080.json`을 만들어 보정합니다(비율 좌표, 0~1):
+**실게임 측정값이 이미 있다**(§0.5): 창모드 클라이언트 2120x1191 기준
+상점 `x=596+223i, y=1008, 223x176` / 벤치 `x=550+130i, y=807, 130x122`.
+그 비율이 `data\layout_1920x1080.json` 에 들어 있고, 이제 `scan`/`report` 도 읽는다.
 
 ```json
 {
-  "bench": [[0.3000, 0.8680, 0.0410, 0.0760], [0.3450, 0.8680, 0.0410, 0.0760], "..."],
-  "shop":  [[0.1405, 0.8900, 0.1320, 0.0960], "..."],
-  "board": [[0.3155, 0.3620, 0.0450, 0.0800], "..."]
+  "bench": [[0.2594, 0.6776, 0.0613, 0.1024], ["...", 9칸]],
+  "shop":  [[0.2811, 0.8463, 0.1052, 0.1478], ["...", 5칸]]
 }
 ```
 * **비율 좌표라서 해상도 무관**합니다. 집 모니터가 2560×1440이어도 `[0,1]` 값이면 그대로 동작합니다(정수 픽셀이면 깨집니다).
 * 순서는 `layout.BENCH_SLOTS` / `SHOP_SLOTS` / `BOARD_SLOTS` 순서(= 화면 왼쪽→오른쪽)와 같아야 합니다.
 * `data/layout_1920x1080.json`은 **개인 캘리브레이션**이라 `.gitignore`에 있습니다. 저장소에 올리려면 `git add -f data/layout_1920x1080.json`.
+* **주의(수정됨)**: 예전에는 `scan`/`report` 가 이 파일을 읽지 않아 보정이 무효였다. 지금은 `--layout`(scan) /
+  `--scan-layout`(report) 로 지정하거나, 생략하면 기본 경로(`data/layout_1920x1080.json`)를 자동으로 읽는다.
 
 **확인(게임 아이콘 그대로 인식되는지)**:
 ```powershell
@@ -176,7 +234,7 @@ python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3
 **통과 기준(게이트)**
 1. 내 보드 성급 인식이 **수동 대조와 100% 일치**(20판 표본). 틀린 칸은 조용히 넘기지 말고 "확인 필요"로.
 2. 골드/레벨/HP 숫자 오인식 **0건**(한 자리라도 틀리면 골드 계획이 통째로 틀어짐). 실패 시 그냥 `None`.
-3. 기존 272개 테스트 전부 통과.
+3. 기존 273개 테스트 전부 통과.
 
 > 원칙 유지: 숫자/성급을 못 읽으면 **0이나 추정값을 넣지 말고 `None` + 경고**. "모르면 모른다고 말한다"가 이 프로젝트의 핵심 자산입니다.
 
@@ -197,7 +255,7 @@ python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3
 
 ## 4. 작업 규칙 (지키면 되돌리기 쉬움)
 
-1. **커밋 전**: 해당 테스트 파일 실행 → 전체 272개 `OK` 확인. 깨진 채로 커밋하지 않습니다.
+1. **커밋 전**: 해당 테스트 파일 실행 → 전체 273개 `OK` 확인. 깨진 채로 커밋하지 않습니다.
 2. **미지 데이터 추정 금지**: 모르면 `UnknownOddsError` / `InvalidOddsError` / `UnknownRecipeError`
    / `UnknownLevelError` / `UnknownIncomeError` / `unknown` / `None`.
 3. **4축 분리 유지**: 유닛(풀) · 아이템(부품) · 골드(시간) · 체력(생존)을 하나의 점수로 합치지 않습니다(차원 오류).
@@ -219,7 +277,7 @@ python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3
 | 항목 | 값 |
 |---|---|
 | 최신 커밋 | `dacdf41` (main, origin과 동기화) + §0.5 의 미커밋 작업 |
-| 테스트 | **272개 전부 통과** — pool 39 / comp 18 / items 15 / economy 26 / survival 16 / report 6 / cv 35 / scan 29 / cli 32 / render 20 / rules 8 / trials_defaults 4 / ocr 24 |
+| 테스트 | **273개 전부 통과** — pool 39 / comp 18 / items 15 / economy 26 / survival 16 / report 6 / cv 35 / scan 30 / cli 32 / render 20 / rules 8 / trials_defaults 4 / ocr 24 |
 | CLI 명령 | **13개** — `odds selftest unit lobby outlook items plan survive report scan comp sensitivity robustness` |
 | 모듈 | `pool_math` `comp` `items` `economy` `survival` `lobby` `odds` `decision` `set_data` `trials` `render` `rules` `cli` + `cv/{screen,fingerprint,layout,scan,ocr}` |
 | 스크립트 | `build_templates` `check_capture` `crop_slots` `fetch_unit_costs` `fetch_item_recipes` `simulate_scan` |

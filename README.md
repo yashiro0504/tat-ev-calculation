@@ -268,7 +268,7 @@ python tests\test_render.py                       # 20 tests, OK  (표기 정직
 python tests\test_rules.py                        #  8 tests, OK  (규칙 기반 판정)
 python tests\test_trials_defaults.py              #  4 tests, OK  (시행 수 상수)
 python tests\test_ocr.py                          # 24 tests, OK  (별/숫자/라운드 OCR)
-python -m unittest discover -s tests -t .        # 위 전부 한 번에(272 tests, OK)
+python -m unittest discover -s tests -t .        # 위 전부 한 번에(273 tests, OK)
 python scripts\check_capture.py --out shot.bmp    # 캡처 확인 + 좌표 디버그
 python scripts\build_templates.py --from-comps data/comps_set18.json   # 아이콘 템플릿 생성
 python scripts\simulate_scan.py --units ahri,morgana,sett --out sim_shot.bmp  # 스캔 검증용 가짜 화면
@@ -697,6 +697,11 @@ python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3
     --scan --scan-window TFT --templates data\templates_set18.json ...
 ```
 
+**개인 캘리브레이션 좌표 (`--layout` / `--scan-layout`)**: `data/layout_1920x1080.json`(비율 좌표)이
+있으면 `scan`/`report --scan` 이 **자동으로 읽어** 그 좌표를 쓴다(예전에는 `check_capture` 만 읽어서
+보정이 실사용 명령에서 무효였다 — 회귀 테스트로 고정). 파일을 생략하면 기본 경로를 보고,
+다른 파일을 쓰려면 `--layout <경로>` 로 지정한다.
+
 **분류 문턱 두 개와 실측 근거** (숫자는 코드 상수 주석에 근거가 함께 있다)
 | 상수 | 값 | 역할 | 실측 |
 |---|---|---|---|
@@ -737,13 +742,13 @@ python scripts/build_templates.py --from-crops data/crops
 ```
 
 **정직하게 말할 한계 (중요)**
-1. **게임 화면에서의 정확도/좌표는 아직 검증하지 못했다.** 좌표(`layout.py`)는 공개된 UI 배치를
-   바탕으로 넣은 **기본값**이고, `check_capture.py`로 저장한 BMP를 보며
-   `data/layout_1920x1080.json`으로 보정하는 절차를 문서화해 두었다.
-   실게임 창모드(클라이언트 2120x1191)에서 1회 측정한 결과는 **상점·벤치 14칸 전부
-   0.49~0.73**(바닥선 0.85 미만 → 전부 "확인 필요")이었다. 즉 인식은 **아직 안 되고**,
-   다음 할 일은 좌표 캘리브레이션(+ 게임 카드 아트에 맞춘 크롭 템플릿)이다. 이 상태에서도
-   도구는 값을 만들어내지 않는다(0칸 확정 / 14칸 확인 필요 / 숫자는 손 입력).
+1. **게임 화면에서의 정확도는 아직 안 된다.** 좌표는 실측해 두었지만(창모드 클라이언트
+   2120x1191 기준 상점 `x=596+223i, y=1008, 223x176` / 벤치 `x=550+130i, y=807, 130x122`),
+   **Data Dragon 정사각 아이콘은 게임 카드 아트와 안 맞는다**: 실제 챔피언 카드 0.53~0.63,
+   빈 카드 0.72, 벤치 3D 모델 0.48~0.67 로 바닥선(0.85)을 못 넘는다 → 전부 "확인 필요"로 남는다
+   (0칸 확정 / 14칸 확인 필요, 추정값은 넣지 않는다). 다음 할 일은 **게임 화면 크롭 템플릿**
+   (`scripts/crop_slots.py` → `build_templates.py --from-crops`)이다. 한 라운드 안에서 상점 카드
+   크롭은 완전히 정적(자기 유사도 1.000)이라 크롭 템플릿 자체는 쓸 수 있다(벤치는 0.97~0.999).
 2. **성급(1/2/3성) 별 인식은 골격을 구현했지만 기본 꺼짐이다.** 별 영역의 밝은 비율은 아이콘
    자체와 섞이기 쉬워(실측: 별 1개 면적의 약 12배) 실게임 화면에 맞추기 전에는 1성을 2성으로
    읽는 식의 **3배 오차**가 날 수 있다. `--star-ocr` 로 켜되, 안전하게는 `--star 'Ahri=2'` 로 지정한다.
@@ -827,7 +832,7 @@ python -m tftcalc.cli scan --templates data/templates_set18.json --in sim_shot.b
 ## 6. 다음 단계 (권장 순서 + 각 단계 게이트)
 
 > **다른 PC에서 이어서 작업할 때는 [`NEXT_STEPS.md`](NEXT_STEPS.md) 를 먼저 보세요.**
-> 클론 → 테스트 272개 확인 → 좌표 캘리브레이션 → 성급/숫자 인식 설계까지 실행 명령 단위로 정리돼 있습니다.
+> 클론 → 테스트 273개 확인 → 좌표 캘리브레이션 → 성급/숫자 인식 설계까지 실행 명령 단위로 정리돼 있습니다.
 
 | 주차 | 할 일 | 통과 기준(게이트) |
 |---|---|---|

@@ -21,6 +21,7 @@ from . import comp as comp_module
 from . import decision, economy, items, lobby, pool_math, render, rules, set_data, survival
 from .trials import FAST, HEAVY, STANDARD
 from .cv import fingerprint
+from .cv import layout as layout_module
 from .cv import scan as scan_module
 from .cv import screen
 from .odds import DEFAULT_ODDS_FILE, ShopOdds, UnknownOddsError
@@ -1414,6 +1415,7 @@ def _run_scan(
     star_spec: str | None,
     source: str | None,
     window: str | None = None,
+    layout_path: str | None = None,
     shop_as_owned: bool = False,
     detect_stars: bool = True,
     digit_templates: "fingerprint.TemplateSet | None" = None,
@@ -1432,6 +1434,18 @@ def _run_scan(
     except FileNotFoundError:
         print("[입력 오류] 유닛 코스트 표를 찾지 못했습니다(data/set18_unit_costs.json).")
         return None
+    # 개인 캘리브레이션 좌표(data/layout_1920x1080.json)를 **실사용 경로에서도** 반영한다.
+    # Regression(2026-09-23): scan/report 가 이 파일을 읽지 않아, 문서대로 보정해도
+    # 인식이 그대로 실패했다(원인을 알 수 없는 '인식 실패'만 보였다).
+    layout_path = layout_path or getattr(args, "layout", None)
+    try:
+        overrides = layout_module.load_overrides(layout_path)
+    except (ValueError, FileNotFoundError) as exc:
+        print(f"[입력 오류] 좌표 오버라이드 파일을 읽지 못했습니다: {exc}")
+        return None
+    if overrides:
+        resolved = layout_path or layout_module.DEFAULT_LAYOUT_PATH
+        print(f"[좌표] 보정 파일 적용: {resolved}")
     image = _load_or_capture(source, window)
     if image is None:
         return None
@@ -1444,6 +1458,7 @@ def _run_scan(
         shop_as_owned=shop_as_owned,
         detect_stars=detect_stars,
         digit_templates=digit_templates,
+        overrides=overrides,
     )
 
 
@@ -1455,6 +1470,7 @@ def cmd_scan(args: argparse.Namespace) -> int:
         star_spec=args.star,
         source=args.source,
         window=args.window,
+        layout_path=args.layout,
         shop_as_owned=args.shop_as_owned,
         detect_stars=bool(args.star_ocr),
         digit_templates=_load_digit_templates(args),
@@ -1479,6 +1495,7 @@ def _scan_snapshot(args: argparse.Namespace) -> "lobby.LobbySnapshot | None":
         star_spec=getattr(args, "star", None),
         source=getattr(args, "scan_in", None),
         window=getattr(args, "scan_window", None),
+        layout_path=getattr(args, "scan_layout", None),
         shop_as_owned=getattr(args, "shop_as_owned", False),
         detect_stars=bool(getattr(args, "star_ocr", False)),
         digit_templates=_load_digit_templates(args),
@@ -1661,6 +1678,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="창 제목(주면 그 창의 클라이언트 영역만 캡처 — 창모드 권장)",
     )
+    rep.add_argument(
+        "--scan-layout",
+        default=None,
+        help="좌표 오버라이드 JSON(기본 data/layout_1920x1080.json — 개인 캘리브레이션)",
+    )
     rep.add_argument("--scan-out", default=None, help="스캔 결과 스냅샷 저장 경로")
     rep.add_argument("--star", default=None, help="성급 지정 'Ahri=2,Krug=3'")
     rep.add_argument(
@@ -1700,6 +1722,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--window",
         default=None,
         help="창 제목(주면 그 창의 클라이언트 영역만 캡처 — 창모드 권장, 예: --window TFT)",
+    )
+    scan_parser.add_argument(
+        "--layout",
+        default=None,
+        help="좌표 오버라이드 JSON(기본 data/layout_1920x1080.json — 개인 캘리브레이션)",
     )
     scan_parser.add_argument("--out", default="data/my_board.json")
     scan_parser.add_argument(

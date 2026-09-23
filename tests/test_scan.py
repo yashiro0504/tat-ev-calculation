@@ -425,8 +425,16 @@ class TestInfoOcrIntegration(unittest.TestCase):
 
 
 class TestCliScanAndReport(unittest.TestCase):
-    def _write_fixture(self, tmp: Path, icons: dict[str, int]) -> tuple[Path, Path, Path]:
-        """합성 스크린샷(BMP) + 템플릿 + 코스트 표를 임시 폴더에 만든다."""
+    def _write_fixture(
+        self, tmp: Path, icons: dict[str, int]
+    ) -> tuple[Path, Path, Path, Path]:
+        """합성 스크린샷(BMP) + 템플릿 + 코스트 표 + **빈 좌표 오버라이드**를 만든다.
+
+        오버라이드 파일을 함께 돌려주는 이유: ``data/layout_1920x1080.json``(개인
+        캘리브레이션)이 있는 PC 에서는 ``scan`` 이 그 좌표를 자동으로 읽는다. 테스트는
+        기본 좌표를 전제로 하므로, **빈 파일을 명시**해 자동 로드에 좌우되지 않게 한다
+        (Regression 2026-09-23: 캘리브레이션 파일을 만든 뒤 CLI 테스트가 통째로 실패했다).
+        """
         canvas, templates = synthetic_screenshot(icons)
         bmp = tmp / "shot.bmp"
         screen.save_bmp(canvas, str(bmp))
@@ -444,12 +452,16 @@ class TestCliScanAndReport(unittest.TestCase):
             ),
             encoding="utf-8",
         )
-        return bmp, templates_path, costs_path
+        layout_path = tmp / "no_calibration.json"
+        layout_path.write_text("{}", encoding="utf-8")
+        return bmp, templates_path, costs_path, layout_path
 
     def test_cli_scan_writes_snapshot(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
-            bmp, templates_path, costs_path = self._write_fixture(tmp_path, {"shop_1": 1})
+            bmp, templates_path, costs_path, layout_path = self._write_fixture(
+                tmp_path, {"shop_1": 1}
+            )
             out = tmp_path / "my_board.json"
             buffer = io.StringIO()
             with redirect_stdout(buffer):
@@ -460,6 +472,7 @@ class TestCliScanAndReport(unittest.TestCase):
                         "--costs", str(costs_path),
                         "--in", str(bmp),
                         "--area", "shop",
+                        "--layout", str(layout_path),
                         "--out", str(out),
                     ]
                 )
@@ -481,7 +494,9 @@ class TestCliScanAndReport(unittest.TestCase):
         """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
-            _, templates_path, costs_path = self._write_fixture(tmp_path, {"shop_1": 1})
+            _, templates_path, costs_path, _layout = self._write_fixture(
+                tmp_path, {"shop_1": 1}
+            )
             out = tmp_path / "my_board.json"
             buffer = io.StringIO()
             with redirect_stdout(buffer):
@@ -499,10 +514,104 @@ class TestCliScanAndReport(unittest.TestCase):
             self.assertIn("창을 찾지 못했습니다", buffer.getvalue())
             self.assertFalse(out.exists())
 
+    def test_cli_scan_applies_layout_override(self):
+        """개인 캘리브레이션 좌표(``--layout``)가 CLI 스캔에 실제로 반영돼야 한다.
+
+        Regression(2026-09-23): ``scan``/``report`` 경로가 ``data/layout_1920x1080.json``
+        을 **읽지 않았다**. 문서(NEXT_STEPS §1)대로 좌표를 보정해도 실사용 명령에서는
+        그대로 실패했고, 화면에는 원인 없는 '인식 실패'만 보였다.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            # 슬롯과 무관한 위치(좌상단)에 아이콘을 둔다 -> 오버라이드가 없으면 아무것도 못 읽는다.
+            icon = make_pattern(1, 253, 95)
+            canvas = screen.Image(
+                width=layout.BASE_WIDTH,
+                height=layout.BASE_HEIGHT,
+                pixels=bytearray(layout.BASE_WIDTH * layout.BASE_HEIGHT * 4),
+            )
+            paste(canvas, icon, 10, 10)
+            templates = fingerprint.TemplateSet(
+                grid=8,
+                templates=[
+                    fingerprint.Template(name="unit1", values=fingerprint.fingerprint(icon))
+                ],
+                source="합성",
+            )
+            templates_path = tmp_path / "templates.json"
+            templates.save(templates_path)
+            costs_path = tmp_path / "costs.json"
+            costs_path.write_text(
+                json.dumps({"units": {"unit1": {"name": "unit1", "cost": 4}}}),
+                encoding="utf-8",
+            )
+            bmp = tmp_path / "shot.bmp"
+            screen.save_bmp(canvas, str(bmp))
+
+            override_path = tmp_path / "layout.json"
+            default_boxes = [list(box) for _, box in layout.resolve("shop", None)]
+            override_path.write_text(
+                json.dumps(
+                    {
+                        "shop": [
+                            [
+                                10 / layout.BASE_WIDTH,
+                                10 / layout.BASE_HEIGHT,
+                                253 / layout.BASE_WIDTH,
+                                95 / layout.BASE_HEIGHT,
+                            ]
+                        ]
+                        + default_boxes[1:]
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            out = tmp_path / "board.json"
+            buffer = io.StringIO()
+            with redirect_stdout(buffer):
+                code = cli.main(
+                    [
+                        "scan",
+                        "--templates", str(templates_path),
+                        "--costs", str(costs_path),
+                        "--in", str(bmp),
+                        "--area", "shop",
+                        "--layout", str(override_path),
+                        "--out", str(out),
+                    ]
+                )
+            self.assertEqual(code, 0)
+            self.assertIn("보정 파일 적용", buffer.getvalue())
+            data = json.loads(out.read_text(encoding="utf-8"))
+            self.assertEqual(
+                [unit["champion"] for unit in data["players"][0]["shop"]], ["unit1"]
+            )
+
+            # 통제: 오버라이드 없이는 같은 화면에서 아무것도 읽히지 않는다
+            plain_out = tmp_path / "plain.json"
+            with redirect_stdout(io.StringIO()):
+                code = cli.main(
+                    [
+                        "scan",
+                        "--templates", str(templates_path),
+                        "--costs", str(costs_path),
+                        "--in", str(bmp),
+                        "--area", "shop",
+                        "--layout", str(tmp_path / "없는파일.json"),
+                        "--out", str(plain_out),
+                    ]
+                )
+            self.assertEqual(code, 0)
+            plain = json.loads(plain_out.read_text(encoding="utf-8"))
+            self.assertEqual(plain["players"][0]["shop"], [])
+
     def test_cli_scan_keeps_opponents_from_existing_snapshot(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
-            bmp, templates_path, costs_path = self._write_fixture(tmp_path, {"shop_1": 1})
+            bmp, templates_path, costs_path, layout_path = self._write_fixture(
+                tmp_path, {"shop_1": 1}
+            )
             existing = tmp_path / "existing.json"
             existing.write_text(
                 json.dumps(
@@ -524,6 +633,7 @@ class TestCliScanAndReport(unittest.TestCase):
                         "--costs", str(costs_path),
                         "--in", str(bmp),
                         "--area", "shop",
+                        "--layout", str(layout_path),
                         "--out", str(out),
                         "--keep-opponents", str(existing),
                     ]
@@ -536,7 +646,9 @@ class TestCliScanAndReport(unittest.TestCase):
     def test_report_scan_uses_scanned_board(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
-            bmp, templates_path, costs_path = self._write_fixture(tmp_path, {"shop_1": 1})
+            bmp, templates_path, costs_path, layout_path = self._write_fixture(
+                tmp_path, {"shop_1": 1}
+            )
             buffer = io.StringIO()
             with redirect_stdout(buffer):
                 code = cli.main(
@@ -549,6 +661,7 @@ class TestCliScanAndReport(unittest.TestCase):
                         "--costs", str(costs_path),
                         "--scan-in", str(bmp),
                         "--scan-area", "shop",
+                        "--scan-layout", str(layout_path),
                     ]
                 )
             output = buffer.getvalue()
