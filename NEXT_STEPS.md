@@ -170,13 +170,27 @@ powershell -NoProfile -ExecutionPolicy Bypass -File %TEMP%\ocr_names.ps1
   애매하면 그 칸은 넣지 않는다(틀린 라벨은 조용한 오분류를 만든다).
 * 스크립트는 저장소 밖(`%TEMP%`)에 있다 — 필요하면 `scripts/` 로 승격해도 된다(Windows 전용).
 
-### 📦 크롭 라이브러리 현황 (2026-09-23, 32개)
+### 📦 크롭 라이브러리 현황 (2026-09-23, 38개)
 Ahri·Akali·Alistar·Amumu·Azir·Camille·Cassiopeia·Cinderling·Diana·Elise·Ezreal·Gromp·Karma·Kayle·
-Kobuko·Kog'Maw·LeBlanc·Leona·Lillia·Pebbles·Rakan·Rammus·Scuttlecrab·Sejuani·Tristana·Varus·Veigar·
-Warwick·Xayah·Yorick·Yunara + 떠돌이(6코, 코스트 표에 없음)
-실게임 인식 실적: 신규 크롭 직후부터 **93~100%** 로 확정, 미등록·빈 칸은 확인 필요(오인 0).
+Kennen·Kobuko·Kog'Maw·LeBlanc·Leona·Lillia·Master Yi·Murkwolf·Nidalee·Ornn·Pebbles·Rakan·Rammus·
+Rek'Sai·Scuttlecrab·Sejuani·Tristana·Varus·Veigar·Warwick·Xayah·Yorick·Yunara + 떠돌이(6코, 표에 없음)
+실게임 인식 실적: 신규 크롭 직후부터 **94~100%** 로 확정, 미등록·빈 칸은 확인 필요(오인 0).
 
-### ⚠️ 네 번째 발견 — 진단 문구가 사용자를 엉뚱한 곳으로 보냈다
+### 🤖 자동 라벨링 루프 (2026-09-23 실사용)
+한 라운드 전체를 한 명령으로 처리하는 스크립트를 만들어 돌렸다(저장소 밖 `%TEMP%\autocycle.py`):
+
+```
+캡처 → 이름표 3배 확대 합성 → Windows OCR(한국어) → 한국어→영어 사전 매핑
+→ 새 챔피언만 data/crops/<영어이름>.bmp 로 이동(중복/빈 칸은 삭제)
+→ build_templates --from-crops → scan 으로 즉시 검증
+```
+
+* 사전(`KO_TO_EN`)에 없는 이름은 **건너뛰고 보고**한다(틀린 라벨은 조용한 오분류를 만든다).
+* OCR 오독은 별칭 표(`KO_ALIASES`)로 보정한다 — 실측: `라간`=Rakan, `일리스`=Elise, `게일`=Kayle,
+  `바위게`=Scuttlecrab(공백 누락). 조회할 때 공백/따옴표를 지우고 비교한다.
+* 실측 성과: **한 라운드 상점 5칸 전부 확정(신뢰도 100%)** 도달. 이후 라운드도 94~100%.
+* 주의: 사이클이 **캡처 2회**(크롭용 + 스캔용)라 그 사이 라운드가 넘어가면 확정 수가 줄어든다(정상).
+* 아직 사람이 봐야 하는 것: 사전에 없는 새 챔피언(OCR 이름만 믿을 수 없어 보류), 벤치 유닛 이름.
 
 ### ⚠️ 네 번째 발견 — 진단 문구가 사용자를 엉뚱한 곳으로 보냈다
 코스트 표에 없는 유닛을 `reason` 없이 `review` 에 넣어서 요약이
