@@ -2,7 +2,7 @@
 
 > 이 문서는 **다른 PC에서 바로 이어서 작업**하기 위한 런북입니다.
 > 현재 상태: 커밋 `dacdf41` (main, origin과 동기화) + **미커밋 작업 있음**(아래 §0.5),
-> 테스트 **273개** 전부 통과, CLI 13개 명령, 외부 의존성 0개.
+> 테스트 **274개** 전부 통과, CLI 13개 명령, 외부 의존성 0개.
 > **인식은 아직 실게임에서 안 됩니다** — 좌표 캘리브레이션이 남았습니다(§1).
 
 ---
@@ -17,9 +17,9 @@ python -m tftcalc.cli selftest  # 환경/데이터 자기점검
 
 **설치할 것이 없습니다.** Python 3.12+ 표준 라이브러리만 씁니다(ctypes 포함). `requirements.txt`를 만들지 마세요 — 무의존성이 이 프로젝트의 장점입니다.
 
-전체 테스트(14개 파일, 273개):
+전체 테스트(14개 파일, 274개):
 ```powershell
-python -m unittest discover -s tests -t .      # 가장 간단(273 tests, OK)
+python -m unittest discover -s tests -t .      # 가장 간단(274 tests, OK)
 ```
 `tests/__init__.py` 를 추가해 discover 가 동작합니다. 파일별로 돌리려면:
 
@@ -31,7 +31,7 @@ python -m unittest discover -s tests -t .      # 가장 간단(273 tests, OK)
  python tests\test_ocr.py) `
  2>&1 | Select-String 'Ran |^OK|FAILED'
 ```
-기대 출력: `Ran 39/18/15/26/16/6/35/30/32/20/8/4/24 tests` + 각각 `OK` (= 273개).
+기대 출력: `Ran 39/18/15/26/16/6/35/30/32/20/8/4/24 tests` + 각각 `OK` (= 274개).
 
 > **함정 1**: 실행기는 PC마다 다르다 — `python` 이 Microsoft Store 스텁이면 `py -3`,
 > `py` 런처가 없으면 `python`. 아래 예시는 **`python` 기준**이다.
@@ -103,6 +103,36 @@ python -m tftcalc.cli scan --templates data\templates_ingame.json --window TFT -
 2. **벤치 유닛은 이름표가 없다.** 3D 모델이라 사람이 라벨링해야 한다. 같은 챔피언이 상점에 동시에
    보이면 그 이름을 옮겨 붙이는 방법이 가장 싸다(상점 크롭 = 같은 챔피언의 2D 아트).
 
+### ⚠️ 다섯 번째 발견 — 오버레이가 게임 창을 덮으면 화면 캡처가 오버레이를 찍는다
+MetaTFT 컴패니언 오버레이가 게임 창 위에 떠 있을 때, 화면 BitBlt 캡처는 **오버레이 내용**을
+가져와 인식이 통째로 실패했다(창은 정상, 좌표도 정상). 게다가 `--window TFT` 의 **부분 일치**가
+`MetaTFT Companion App`/MetaTFT 웹페이지를 잡아 '스캔 성공'(전부 '확인 필요')처럼 보였다.
+
+수정:
+* `capture_client` 가 먼저 `PrintWindow(PW_RENDERFULLCONTENT)` 로 **창이 스스로 그린 내용**을
+  받고(겹친 창 무시), 실패/빈 화면이면 화면 BitBlt 로 폴백한다. 실측: 오버레이가 덮인 상태에서
+  게임 화면을 정상 캡처.
+* 창 제목 매칭은 **정확 일치 + 양끝 공백/대소문자 무시(점수 ≥ 2)만** 쓰고 부분 일치는 기본 금지.
+  못 찾으면 **비슷한 제목을 안내**한다(`screen.near_miss_titles`). 최소화/숨김 창은 건너뛴다.
+
+### ✅ 코스트 표 = 전체 로스터 65개 (2026-09-23)
+`tft.ninja/units` 에서 슬러그 65개를 받아 `fetch_unit_costs.py` 로 채웠다(36 -> 65).
+한국어 카드 이름도 특성·코스트 대조로 확정했다:
+
+| 카드(한국어) | 코스트 | 특성 | 영어 이름 |
+|---|---|---|---|
+| 심술두꺼비 | 2 | 협곡아수/적응가 | **Gromp** (Riftbeast, Adaptor) |
+| 바위 게 | 2 | 협곡아수/전쟁기계 | **Scuttlecrab** (Riftbeast, Juggernaut) |
+| 불타는 묘목 | 1 | 협곡아수/사냥꾼 | **Cinderling** (Riftbeast, Hunter) |
+| 조약돌 | 1 | 협곡아수/기원자 | **Pebbles** (Riftbeast, Invoker) |
+
+갱신 절차(요청이 65건이라 **10~11개씩 나눠 병렬 실행 후 병합**):
+```powershell
+# 슬러그 목록은 tft.ninja/units 에서 /units/<slug> 링크를 긁는다(65개)
+python scripts\fetch_unit_costs.py --sleep 0.3 --out $env:TEMP\costs_p1.json --units ahri,akali,...
+# ... p6 까지 나눠 실행한 뒤, 각 조각의 units 를 모아 save() 로 병합(형식 유지)
+```
+
 ### ⚠️ 네 번째 발견 — 진단 문구가 사용자를 엉뚱한 곳으로 보냈다
 코스트 표에 없는 유닛을 `reason` 없이 `review` 에 넣어서 요약이
 `모호(Varus vs 심술두꺼비, 마진 0.259)` 로 출력됐다. 실제 원인은 '코스트 표에 없음'인데
@@ -142,25 +172,32 @@ python -m tftcalc.cli scan --templates data\templates_set18.json --window TFT --
 
 ---
 
-## 1. 남은 작업 A — 실게임 템플릿/코스트 데이터 채우기 (인식은 검증됐다)
+## 1. 남은 작업 A — 템플릿 라이브러리 늘리기 + OCR 캘리브레이션
 
-좌표·인식 파이프라인은 끝났다(§0.5 검증 성공: 0.985~0.999 확정, 오인 0).
-남은 것은 **데이터를 채우는 일** 두 가지다.
+좌표·인식·코스트 표는 끝났다(§0.5: 크롭 템플릿 0.985~1.000 확정, 오인 0, 코스트 65개 전체 로스터).
+남은 것은 **라이브러리를 늘리는 일**과 **OCR 캘리브레이션**이다.
 
-1. **크롭 템플릿 라이브러리 늘리기** — 상점 카드 이름표를 보고 크롭 파일명만 바꾸면 된다(§0.5 워크플로).
-   챔피언 하나당 한 번이면 그 뒤로는 계속 인식된다. 빈 칸 크롭은 넣지 말 것.
-2. **코스트 표 채우기** — `data/set18_unit_costs.json` 이 patch 18.1 + 메타 컴프 유닛(36개)만 담고 있어
-   실게임 상점의 상당수가 `코스트 표에 없음` 으로 빠진다.
+1. **크롭 템플릿 라이브러리** (현재 16개: Ahri·Amumu·Cassiopeia·Cinderling·Ezreal·Gromp·Kobuko·
+   Kog'Maw·Pebbles·Scuttlecrab·Tristana·Varus·Veigar·Warwick·Xayah·Yorick)
    ```powershell
-   python scripts\fetch_unit_costs.py --units xayah,varus,veigar,yorick   # tft.ninja 에서 조회
-   python scripts\fetch_unit_costs.py --from-comps data\comps_set18.json  # 기존 경로(컴프 유닛만)
+   python scripts\check_capture.py --window TFT --out shot.bmp --shop   # 상점 보이는지 확인(분산 2000+)
+   python scripts\crop_slots.py --in shot.bmp --area shop               # data\crops\shop_N.bmp
+   # 카드 이름표를 보고 파일명을 코스트 표의 이름으로 바꾼다(shop_3.bmp -> Yorick.bmp)
+   python scripts\build_templates.py --from-crops data\crops --out data\templates_ingame.json
+   python -m tftcalc.cli scan --templates data\templates_ingame.json --window TFT --area shop,bench
    ```
-   근본 해결은 **전체 로스터 자동 수집**(CommunityDragon, README §7)이다 — 세트 교체 대비까지 포함.
+   * 빈 칸 크롭은 **넣지 않는다**(분산 300 미만이면 빈 칸). 아이템/증강 선택 화면에서는 상점이 아예 없다.
+   * 파일명은 **코스트 표의 이름과 정확히 같아야** 코스트까지 붙는다(예: `Kog'Maw.bmp`, `Pebbles.bmp`).
+   * 한국어 카드 이름은 §0.5 표처럼 특성+코스트로 영어 이름을 확정해서 붙인다.
+   * 실측: 한 라운드 안에서 상점 카드는 정적(자기 유사도 1.000), 챔피언당 한 번 크롭이면 이후 계속 인식된다.
+2. **성급(별)·숫자(골드/레벨/HP/라운드) 캘리브레이션** (§2) — 실게임 크롭으로 임계값/지문 파일을 만든다.
+3. **벤치 유닛 라벨링** — 이름표가 없어(3D 모델) 사람이 붙여야 한다. 같은 챔피언이 상점에 동시에
+   보이면 그 이름을 옮기는 게 가장 싸다.
 
 **게이트(통과 기준)**
-1. 상점 5칸 중 템플릿이 있는 챔피언은 **유사도 0.95 이상으로 확정**(실측 0.985~0.999).
+1. 상점 5칸 중 템플릿이 있는 챔피언은 **유사도 0.95 이상으로 확정**(실측 0.985~1.000).
 2. 템플릿에 없는 챔피언·빈 칸은 **확정되지 않는다**(실측 0.72~0.75 → 확인 필요).
-3. 기존 273개 테스트 전부 통과.
+3. 기존 274개 테스트 전부 통과.
 
 ```powershell
 # 1) TFT를 창모드(또는 전체화면 창모드)로 띄우고 상점이 보이는 상태에서
@@ -278,7 +315,7 @@ python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3
 **통과 기준(게이트)**
 1. 내 보드 성급 인식이 **수동 대조와 100% 일치**(20판 표본). 틀린 칸은 조용히 넘기지 말고 "확인 필요"로.
 2. 골드/레벨/HP 숫자 오인식 **0건**(한 자리라도 틀리면 골드 계획이 통째로 틀어짐). 실패 시 그냥 `None`.
-3. 기존 273개 테스트 전부 통과.
+3. 기존 274개 테스트 전부 통과.
 
 > 원칙 유지: 숫자/성급을 못 읽으면 **0이나 추정값을 넣지 말고 `None` + 경고**. "모르면 모른다고 말한다"가 이 프로젝트의 핵심 자산입니다.
 
@@ -299,7 +336,7 @@ python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3
 
 ## 4. 작업 규칙 (지키면 되돌리기 쉬움)
 
-1. **커밋 전**: 해당 테스트 파일 실행 → 전체 273개 `OK` 확인. 깨진 채로 커밋하지 않습니다.
+1. **커밋 전**: 해당 테스트 파일 실행 → 전체 274개 `OK` 확인. 깨진 채로 커밋하지 않습니다.
 2. **미지 데이터 추정 금지**: 모르면 `UnknownOddsError` / `InvalidOddsError` / `UnknownRecipeError`
    / `UnknownLevelError` / `UnknownIncomeError` / `unknown` / `None`.
 3. **4축 분리 유지**: 유닛(풀) · 아이템(부품) · 골드(시간) · 체력(생존)을 하나의 점수로 합치지 않습니다(차원 오류).
@@ -321,7 +358,7 @@ python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3
 | 항목 | 값 |
 |---|---|
 | 최신 커밋 | `dacdf41` (main, origin과 동기화) + §0.5 의 미커밋 작업 |
-| 테스트 | **273개 전부 통과** — pool 39 / comp 18 / items 15 / economy 26 / survival 16 / report 6 / cv 35 / scan 30 / cli 32 / render 20 / rules 8 / trials_defaults 4 / ocr 24 |
+| 테스트 | **274개 전부 통과** — pool 39 / comp 18 / items 15 / economy 26 / survival 16 / report 6 / cv 36 / scan 30 / cli 32 / render 20 / rules 8 / trials_defaults 4 / ocr 24 |
 | CLI 명령 | **13개** — `odds selftest unit lobby outlook items plan survive report scan comp sensitivity robustness` |
 | 모듈 | `pool_math` `comp` `items` `economy` `survival` `lobby` `odds` `decision` `set_data` `trials` `render` `rules` `cli` + `cv/{screen,fingerprint,layout,scan,ocr}` |
 | 스크립트 | `build_templates` `check_capture` `crop_slots` `fetch_unit_costs` `fetch_item_recipes` `simulate_scan` |

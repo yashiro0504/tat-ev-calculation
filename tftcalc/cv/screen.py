@@ -111,6 +111,24 @@ class Image:
         return sum((value - mean) ** 2 for value in values) / len(values)
 
 
+def _bitmap_pixels(memory_dc, bitmap, width: int, height: int) -> Image:
+    """메모리 DC 의 비트맵을 ``Image`` 로 읽는다(위->아래 BGRA)."""
+    info = _BITMAPINFO()
+    info.bmiHeader.biSize = ctypes.sizeof(_BITMAPINFOHEADER)
+    info.bmiHeader.biWidth = width
+    info.bmiHeader.biHeight = -height  # 음수 = 위->아래 순서
+    info.bmiHeader.biPlanes = 1
+    info.bmiHeader.biBitCount = 32
+    info.bmiHeader.biCompression = 0  # BI_RGB
+    buffer = (ctypes.c_char * (width * height * 4))()
+    copied = _gdi32.GetDIBits(
+        memory_dc, bitmap, 0, height, buffer, ctypes.byref(info), DIB_RGB_COLORS
+    )
+    if copied == 0:
+        raise RuntimeError("GetDIBits 실패.")
+    return Image(width=width, height=height, pixels=bytearray(buffer))
+
+
 def capture(
     x: int = 0, y: int = 0, width: int | None = None, height: int | None = None
 ) -> Image:
@@ -130,20 +148,7 @@ def capture(
     try:
         if not _gdi32.BitBlt(memory_dc, 0, 0, width, height, screen_dc, x, y, SRCCOPY):
             raise RuntimeError("BitBlt 실패(화면 캡처 권한을 확인하세요).")
-        info = _BITMAPINFO()
-        info.bmiHeader.biSize = ctypes.sizeof(_BITMAPINFOHEADER)
-        info.bmiHeader.biWidth = width
-        info.bmiHeader.biHeight = -height  # 음수 = 위->아래 순서
-        info.bmiHeader.biPlanes = 1
-        info.bmiHeader.biBitCount = 32
-        info.bmiHeader.biCompression = 0  # BI_RGB
-        buffer = (ctypes.c_char * (width * height * 4))()
-        copied = _gdi32.GetDIBits(
-            memory_dc, bitmap, 0, height, buffer, ctypes.byref(info), DIB_RGB_COLORS
-        )
-        if copied == 0:
-            raise RuntimeError("GetDIBits 실패.")
-        return Image(width=width, height=height, pixels=bytearray(buffer))
+        return _bitmap_pixels(memory_dc, bitmap, width, height)
     finally:
         _gdi32.DeleteObject(bitmap)
         _gdi32.DeleteDC(memory_dc)
@@ -173,38 +178,90 @@ def _title_score(window_title: str, wanted: str) -> int:
     return 0
 
 
-def _find_handle(title: str) -> int | None:
-    """제목이 가장 잘 맞는 최상위 창 핸들(없으면 None)."""
+def _candidate_key(score: int, area: int) -> tuple[int, int]:
+    """후보 창 비교 키: 제목 점수가 높은 것 우선, 같으면 **큰 창** 우선.
+
+    큰 창 우선인 이유: ``--window TFT`` 의 부분 일치만 쓰면 ``MetaTFT Companion App`` 같은
+    창도 걸린다. 게임 창이 떠 있으면 점수 2(공백 제거 후 일치)라 이기지만, 게임이 없고
+    작은 도우미 창만 있으면 엉뚱한 창을 캡처해 '스캔 성공'처럼 보인다.
+    """
+    return (score, area)
+
+
+def _find_handle(title: str, *, allow_partial: bool = False) -> int | None:
+    """제목이 가장 잘 맞는 최상위 창 핸들(없으면 None).
+
+    * 숨겨진 창과 **최소화된 창은 건너뛴다** — GDI 로 캡처해도 쓰레기(검은/축소 화면)가 나오고,
+      그러면 '인식 실패'의 원인을 창 상태에서 찾기 어려워진다.
+    * ``allow_partial=False``(기본)이면 **부분 일치는 쓰지 않는다.** 실측 회귀(2026-09-23):
+      게임이 꺼진 상태에서 ``--window TFT`` 가 ``MetaTFT Companion App``/MetaTFT 웹페이지를
+      잡아 '스캔 성공'(내용은 전부 '확인 필요')처럼 보였다. 게임 창 제목은 ``'TFT  '`` 라
+      양끝 공백 제거 일치(점수 2)로 충분히 찾을 수 있다.
+    """
     if not is_supported():
         return None
-    best_score = 0
-    best_handle = 0
+    best: tuple[int, int, int] | None = None  # (score, area, handle)
     callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
 
     def visit(handle, _param):
-        nonlocal best_score, best_handle
+        nonlocal best
+        if not _user32.IsWindowVisible(handle) or _user32.IsIconic(handle):
+            return True
         length = _user32.GetWindowTextLengthW(handle)
         if length:
             buffer = ctypes.create_unicode_buffer(length + 1)
             _user32.GetWindowTextW(handle, buffer, length + 1)
             score = _title_score(buffer.value, title)
-            if score > best_score:
-                best_score, best_handle = score, handle
+            if score < 2 and not (allow_partial and score == 1):
+                return True
+            rect = wintypes.RECT()
+            _user32.GetWindowRect(handle, ctypes.byref(rect))
+            area = max(0, rect.right - rect.left) * max(0, rect.bottom - rect.top)
+            key = _candidate_key(score, area)
+            if best is None or key > _candidate_key(best[0], best[1]):
+                best = (score, area, handle)
         return True
 
     _user32.EnumWindows(callback_type(visit), 0)
-    return best_handle or None
+    return best[2] if best else None
 
 
-def find_window(title: str) -> tuple[int, int, int, int] | None:
+def near_miss_titles(title: str, limit: int = 3) -> list[str]:
+    """부분 일치만 되는(점수 1) 창 제목들 — '창을 찾지 못했습니다' 안내용.
+
+    조용히 엉뚱한 창을 쓰는 대신, 후보를 보여주고 사용자가 제목 전체를 지정하게 한다.
+    """
+    if not is_supported():
+        return []
+    found: list[str] = []
+    callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+    def visit(handle, _param):
+        if len(found) >= limit:
+            return False
+        if not _user32.IsWindowVisible(handle):
+            return True
+        length = _user32.GetWindowTextLengthW(handle)
+        if length:
+            buffer = ctypes.create_unicode_buffer(length + 1)
+            _user32.GetWindowTextW(handle, buffer, length + 1)
+            if _title_score(buffer.value, title) == 1:
+                found.append(buffer.value.strip())
+        return True
+
+    _user32.EnumWindows(callback_type(visit), 0)
+    return found
+
+
+def find_window(title: str, *, allow_partial: bool = False) -> tuple[int, int, int, int] | None:
     """창 제목으로 (x, y, width, height) 를 찾는다. 없으면 None.
 
-    제목은 정확 일치를 우선하되, 뒤 공백/대소문자 차이와 부분 일치도 받아준다
-    (``_title_score``). 창 전체(타이틀바·테두리 포함) 크기다.
+    제목은 정확 일치를 우선하되 양끝 공백/대소문자 차이는 무시한다(``_title_score`` ≥ 2).
+    부분 일치는 ``allow_partial=True`` 일 때만 쓴다. 창 전체(타이틀바·테두리 포함) 크기다.
     """
     if not is_supported():
         return None
-    handle = _find_handle(title)
+    handle = _find_handle(title, allow_partial=allow_partial)
     if not handle:
         return None
     rect = wintypes.RECT()
@@ -222,16 +279,21 @@ def capture_window(title: str) -> Image | None:
     return capture(x, y, width, height)
 
 
-def find_client(title: str) -> tuple[int, int, int, int] | None:
+def find_client(
+    title: str, *, allow_partial: bool = False
+) -> tuple[int, int, int, int] | None:
     """창 제목으로 **클라이언트 영역**(타이틀바·테두리 제외)을 찾는다. 없으면 None.
 
     왜 창 전체가 아니라 클라이언트인가: 비율 좌표(``cv/layout.py``)는 게임 화면(=클라이언트)
     기준으로 만든 값이다. 창모드에서 창 전체를 캡처하면 타이틀바·테두리 두께만큼
     좌표가 위/왼쪽으로 밀려 상점·벤치 칸이 어긋난다(실측: 타이틀바 31px).
+
+    제목은 정확 일치 + 양끝 공백/대소문자 무시까지(점수 ≥ 2)만 쓴다 — 부분 일치는
+    ``MetaTFT`` 같은 다른 창을 잡을 수 있어 기본 금지다(``near_miss_titles`` 참고).
     """
     if not is_supported():
         return None
-    handle = _find_handle(title)
+    handle = _find_handle(title, allow_partial=allow_partial)
     if not handle:
         return None
     rect = wintypes.RECT()
@@ -243,18 +305,78 @@ def find_client(title: str) -> tuple[int, int, int, int] | None:
     return (origin.x, origin.y, rect.right, rect.bottom)
 
 
-def capture_client(title: str) -> Image | None:
+def capture_client(title: str, *, allow_partial: bool = False) -> Image | None:
     """창 제목으로 그 창의 클라이언트 영역만 캡처(없으면 None).
+
+    **겹친 창에 영향받지 않는다**: 먼저 ``PrintWindow(PW_RENDERFULLCONTENT)`` 로 창이
+    스스로를 그리게 하고, 실패하거나 빈 화면이면 화면 BitBlt 로 폴백한다.
+    실측(2026-09-23): MetaTFT 컴패니언 오버레이가 게임 창 위를 덮은 상태에서 화면
+    캡처는 **오버레이 내용**을 찍어 인식이 통째로 실패했다(창 자체는 정상). PrintWindow 는
+    창이 스스로 그린 내용을 받으므로 그 상황에서도 게임 화면을 얻는다.
 
     창모드(``TFT`` 등)에서 비율 좌표를 그대로 쓰려면 이 함수를 쓴다.
     """
-    rect = find_client(title)
-    if rect is None:
+    if not is_supported():
         return None
-    x, y, width, height = rect
+    handle = _find_handle(title, allow_partial=allow_partial)
+    if not handle:
+        return None
+    client = wintypes.RECT()
+    if not _user32.GetClientRect(handle, ctypes.byref(client)):
+        return None
+    width, height = client.right, client.bottom
     if width <= 0 or height <= 0:
         return None
-    return capture(x, y, width, height)
+
+    printed = _print_window_client(handle)
+    if printed is not None and printed.variance() > 1.0:
+        return printed
+
+    origin = wintypes.POINT(0, 0)
+    if not _user32.ClientToScreen(handle, ctypes.byref(origin)):
+        return None
+    return capture(origin.x, origin.y, width, height)
+
+
+def _print_window_client(handle: int) -> Image | None:
+    """``PrintWindow`` 로 창을 그려 **클라이언트 영역**만 잘라 돌려준다(실패 시 None)."""
+    window_rect = wintypes.RECT()
+    if not _user32.GetWindowRect(handle, ctypes.byref(window_rect)):
+        return None
+    origin = wintypes.POINT(0, 0)
+    if not _user32.ClientToScreen(handle, ctypes.byref(origin)):
+        return None
+    client = wintypes.RECT()
+    if not _user32.GetClientRect(handle, ctypes.byref(client)):
+        return None
+
+    ww = window_rect.right - window_rect.left
+    wh = window_rect.bottom - window_rect.top
+    if ww <= 0 or wh <= 0:
+        return None
+
+    window_dc = _user32.GetWindowDC(handle)
+    if not window_dc:
+        return None
+    memory_dc = _gdi32.CreateCompatibleDC(window_dc)
+    bitmap = _gdi32.CreateCompatibleBitmap(window_dc, ww, wh)
+    previous = _gdi32.SelectObject(memory_dc, bitmap)
+    try:
+        PW_RENDERFULLCONTENT = 0x00000002
+        if not _user32.PrintWindow(handle, memory_dc, PW_RENDERFULLCONTENT):
+            return None
+        full = _bitmap_pixels(memory_dc, bitmap, ww, wh)
+    except (OSError, RuntimeError):
+        return None
+    finally:
+        _gdi32.SelectObject(memory_dc, previous)
+        _gdi32.DeleteObject(bitmap)
+        _gdi32.DeleteDC(memory_dc)
+        _user32.ReleaseDC(handle, window_dc)
+
+    left = origin.x - window_rect.left
+    top = origin.y - window_rect.top
+    return full.crop(left, top, client.right, client.bottom)
 
 
 def save_bmp(image: Image, path: str) -> None:

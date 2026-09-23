@@ -268,7 +268,7 @@ python tests\test_render.py                       # 20 tests, OK  (표기 정직
 python tests\test_rules.py                        #  8 tests, OK  (규칙 기반 판정)
 python tests\test_trials_defaults.py              #  4 tests, OK  (시행 수 상수)
 python tests\test_ocr.py                          # 24 tests, OK  (별/숫자/라운드 OCR)
-python -m unittest discover -s tests -t .        # 위 전부 한 번에(273 tests, OK)
+python -m unittest discover -s tests -t .        # 위 전부 한 번에(274 tests, OK)
 python scripts\check_capture.py --out shot.bmp    # 캡처 확인 + 좌표 디버그
 python scripts\build_templates.py --from-comps data/comps_set18.json   # 아이콘 템플릿 생성
 python scripts\simulate_scan.py --units ahri,morgana,sett --out sim_shot.bmp  # 스캔 검증용 가짜 화면
@@ -689,9 +689,15 @@ scripts/simulate_scan.py   게임 없이 합성 화면으로 스캔 재현(회�
 **창모드에서 쓰기 (`--window`)**: 비율 좌표는 게임 화면(=창의 **클라이언트 영역**) 기준이다.
 창 전체를 캡처하면 타이틀바·테두리(실측 31px/8px)만큼 밀려 칸이 어긋난다. 그래서 `scan`/
 `report --scan`/`check_capture` 는 `--window <제목>` 로 클라이언트 영역만 잘라 쓴다.
-제목은 정확 일치를 우선하되 뒤 공백·대소문자 차이와 부분 일치도 받는다(실제 TFT 창 제목은
-`'TFT  '` 처럼 뒤에 공백이 붙는다 → `--window TFT` 로 찾힌다).
-```powershell
+
+* **겹친 창에 영향받지 않는다**: 먼저 `PrintWindow(PW_RENDERFULLCONTENT)` 로 창이 스스로를
+  그리게 하고, 실패하면 화면 BitBlt 로 폴백한다. 실측(2026-09-23): **MetaTFT 컴패니언 오버레이가
+  게임 창 위를 덮은 상태**에서 화면 캡처는 오버레이 내용을 찍어 인식이 통째로 실패했다(창은 정상).
+  PrintWindow 는 그 상황에서도 게임 화면을 얻는다.
+* **제목은 정확 일치(+양끝 공백/대소문자 무시)만 쓴다.** 실제 TFT 창 제목은 `'TFT  '` 라
+  `--window TFT` 로 찾힌다. 부분 일치는 쓰지 않는다 — `MetaTFT`(컴패니언/웹) 같은 다른 창을
+  잡아 '스캔 성공'처럼 보이기 때문이다. 못 찾으면 **비슷한 제목을 알려준다**.
+  ```powershell
 python -m tftcalc.cli scan --templates data\templates_set18.json --window TFT --area shop,bench
 python -m tftcalc.cli report --round 4-1 --gold 60 --level 7 --hp 40 --streak -3 `
     --scan --scan-window TFT --templates data\templates_set18.json ...
@@ -751,20 +757,23 @@ python scripts/build_templates.py --from-crops data/crops
    템플릿에 없는 챔피언·빈 칸·바뀐 벤치 유닛은 **오인 없이 "확인 필요"로 남는다**(실측 0.72~0.75 / 0.22~0.52).
    워크플로: `crop_slots.py → (이름표 보고 파일명 교체) → build_templates.py --from-crops →
    scan --templates data\templates_ingame.json --window TFT`
-2. **남은 병목은 데이터다.** (a) `data/set18_unit_costs.json` 이 patch 18.1 + 메타 컴프 유닛 36개만
-   담고 있어 실게임 상점의 상당수가 `코스트 표에 없음` 으로 빠진다(실측: Varus·조약돌·바위 게·
-   심술두꺼비 없음) → `fetch_unit_costs.py --units ...` 또는 전체 로스터 파이프라인(§7) 필요.
-   (b) 벤치 유닛은 이름표가 없어(3D 모델) 사람이 라벨링해야 한다. 코스트가 없으면 그 칸은
+2. **코스트 표는 전체 로스터로 채웠다(65개, patch 18.1).** 예전엔 메타 컴프 유닛 36개뿐이라
+   실게임 상점의 상당수가 `코스트 표에 없음` 으로 빠졌다(실측: Varus·Ezreal·Tristana 등 없음).
+   tft.ninja 유닛 목록(`/units`)에서 슬러그 65개를 받아 `fetch_unit_costs.py` 로 채웠고,
+   한국어 카드 이름도 특성·코스트로 확정했다(심술두꺼비=Gromp, 바위 게=Scuttlecrab,
+   불타는 묘목=Cinderling, 조약돌=Pebbles). 세트/패치가 바뀌면 같은 방법으로 갱신한다.
+3. **벤치 유닛은 이름표가 없어(3D 모델) 사람이 라벨링해야 한다.** 같은 챔피언이 상점에
+   동시에 보이면 그 이름을 옮겨 붙이는 방법이 가장 싸다. 코스트가 없으면 그 칸은
    `확인 필요`로 빠질 뿐 **0이나 추정값을 넣지 않는다**(풀 계산 오염 방지).
-3. **성급(1/2/3성) 별 인식은 골격을 구현했지만 기본 꺼짐이다.** 별 영역의 밝은 비율은 아이콘
+4. **성급(1/2/3성) 별 인식은 골격을 구현했지만 기본 꺼짐이다.** 별 영역의 밝은 비율은 아이콘
    자체와 섞이기 쉬워(실측: 별 1개 면적의 약 12배) 실게임 화면에 맞추기 전에는 1성을 2성으로
    읽는 식의 **3배 오차**가 날 수 있다. `--star-ocr` 로 켜되, 안전하게는 `--star 'Ahri=2'` 로 지정한다.
-4. **숫자(골드/레벨/HP)와 라운드('4-2') OCR 골격은 있다**(`cv/ocr.py`: 자릿수 분리 + 지문 분류,
+5. **숫자(골드/레벨/HP)와 라운드('4-2') OCR 골격은 있다**(`cv/ocr.py`: 자릿수 분리 + 지문 분류,
    라운드는 '숫자·구분자·숫자' 3조각이고 범위(1~9 / 1~7) 안일 때만 확정). 다만 `--digits` 로
    0~9 지문 파일을 주지 않으면 읽지 않고 `None` + '손 입력 필요' 다(그 파일은 실게임 숫자 크롭으로
    만들어야 한다).
-5. **상대 보드/대기석은 읽지 않는다.** 이 도구는 내 화면만 본다(상대는 스카우팅/GEP 입력).
-6. 빈 칸은 `unknown`으로 남긴다(추정 금지). 마진이 작으면 자동 확정하지 않고 "확인 필요"로 표시한다.
+6. **상대 보드/대기석은 읽지 않는다.** 이 도구는 내 화면만 본다(상대는 스카우팅/GEP 입력).
+7. 빈 칸은 `unknown`으로 남긴다(추정 금지). 마진이 작으면 자동 확정하지 않고 "확인 필요"로 표시한다.
 
 ### 5.12 CV → 계산기 연결: "한 번 실행하면 끝"
 
@@ -839,7 +848,7 @@ python -m tftcalc.cli scan --templates data/templates_set18.json --in sim_shot.b
 ## 6. 다음 단계 (권장 순서 + 각 단계 게이트)
 
 > **다른 PC에서 이어서 작업할 때는 [`NEXT_STEPS.md`](NEXT_STEPS.md) 를 먼저 보세요.**
-> 클론 → 테스트 273개 확인 → 좌표 캘리브레이션 → 성급/숫자 인식 설계까지 실행 명령 단위로 정리돼 있습니다.
+> 클론 → 테스트 274개 확인 → 좌표 캘리브레이션 → 성급/숫자 인식 설계까지 실행 명령 단위로 정리돼 있습니다.
 
 | 주차 | 할 일 | 통과 기준(게이트) |
 |---|---|---|

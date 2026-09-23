@@ -3,7 +3,7 @@
     "이 파일은 scripts/fetch_unit_costs.py 가 생성한다. 손으로 고치지 말 것.",
     "용도: 컴프 JSON 의 units[].cost 를 채우기 전에 실제 값을 확인하는 근거.",
     "컴프(comps_*.json)의 '구성'은 사람이 검토해 확정한다.",
-    "갱신: py -3 scripts/fetch_unit_costs.py --from-comps data/comps_set18.json"
+    "갱신: python scripts/fetch_unit_costs.py --from-comps data/comps_set18.json"
   ],
   "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)",
   "patch": "18.1",
@@ -17,6 +17,29 @@
       ],
       "patch": "18.1",
       "slug": "ahri",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "akali": {
+      "name": "Akali",
+      "cost": 1,
+      "traits": [
+        "Inferno",
+        "Adaptor",
+        "Ravager"
+      ],
+      "patch": "18.1",
+      "slug": "akali",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "alistar": {
+      "name": "Alistar",
+      "cost": 2,
+      "traits": [
+        "Elderwood",
+        "Brawler"
+      ],
+      "patch": "18.1",
+      "slug": "alistar",
       "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
     },
     "alune": {
@@ -53,6 +76,17 @@
       "slug": "aphelios",
       "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
     },
+    "ashe": {
+      "name": "Ashe",
+      "cost": 5,
+      "traits": [
+        "Blossom",
+        "Hunter"
+      ],
+      "patch": "18.1",
+      "slug": "ashe",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
     "azir": {
       "name": "Azir",
       "cost": 3,
@@ -74,6 +108,28 @@
       ],
       "patch": "18.1",
       "slug": "brambleback",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "caitlyn": {
+      "name": "Caitlyn",
+      "cost": 2,
+      "traits": [
+        "Coven",
+        "Hunter"
+      ],
+      "patch": "18.1",
+      "slug": "caitlyn",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "camille": {
+      "name": "Camille",
+      "cost": 1,
+      "traits": [
+        "Coven",
+        "Ravager"
+      ],
+      "patch": "18.1",
+      "slug": "camille",
       "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
     },
     "cassiopeia": {
@@ -110,6 +166,51 @@
       "slug": "diana",
       "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
     },
+    "draven": {
+      "name": "Draven",
+      "cost": 5,
+      "traits": [
+        "Bounty",
+        "Seeker"
+      ],
+      "patch": "18.1",
+      "slug": "draven",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "elder-dragon": {
+      "name": "Elder Dragon",
+      "cost": 5,
+      "traits": [
+        "Apex",
+        "Predator",
+        "Riftbeast"
+      ],
+      "patch": "18.1",
+      "slug": "elder-dragon",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "elise": {
+      "name": "Elise",
+      "cost": 2,
+      "traits": [
+        "Coven",
+        "Vanguard"
+      ],
+      "patch": "18.1",
+      "slug": "elise",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "ezreal": {
+      "name": "Ezreal",
+      "cost": 4,
+      "traits": [
+        "Elderwood",
+        "Executioner"
+      ],
+      "patch": "18.1",
+      "slug": "ezreal",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
     "fiddlesticks": {
       "name": "Fiddlesticks",
       "cost": 3,
@@ -135,6 +236,17 @@
       "slug": "gnar",
       "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
     },
+    "gromp": {
+      "name": "Gromp",
+      "cost": 2,
+      "traits": [
+        "Riftbeast",
+        "Adaptor"
+      ],
+      "patch": "18.1",
+      "slug": "gromp",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
     "hecarim": {
       "name": "Hecarim",
       "cost": 3,
@@ -146,6 +258,16 @@
       "slug": "hecarim",
       "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
     },
+    "ivern": {
+      "name": "Ivern",
+      "cost": 5,
+      "traits": [
+        "Greenfather"
+      ],
+      "patch": "18.1",
+      "slug": "ivern",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
     "karma": {
       "name": "Karma",
       "cost": 1,
@@ -155,6 +277,38 @@
       ],
       "patch": "18.1",
       "slug": "karma",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "kayle": {
+      "name": "Kayle",
+      "cost": 2,
+      "traits": [
+        "Solar",
+        "Rapidfire"
+      ],
+      "patch": "18.1",
+      "slug": "kayle",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "kennen": {
+      "name": "Kennen",
+      "cost": 5,
+      "traits": [
+        "Inferno",
+        "Executioner"
+      ],
+      "patch": "18.1",
+      "slug": "kennen",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "khazix": {
+      "name": "Kha'Zix",
+      "cost": 3,
+      "traits": [
+        "Rival"
+      ],
+      "patch": "18.1",
+      "slug": "khazix",
       "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
     },
     "kobuko": {
@@ -191,6 +345,17 @@
       "slug": "krug",
       "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
     },
+    "leblanc": {
+      "name": "LeBlanc",
+      "cost": 2,
+      "traits": [
+        "Elderwood",
+        "Spellweaver"
+      ],
+      "patch": "18.1",
+      "slug": "leblanc",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
     "leona": {
       "name": "Leona",
       "cost": 1,
@@ -211,6 +376,16 @@
       ],
       "patch": "18.1",
       "slug": "lillia",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "lux": {
+      "name": "Lux",
+      "cost": 5,
+      "traits": [
+        "Avatar"
+      ],
+      "patch": "18.1",
+      "slug": "lux",
       "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
     },
     "malphite": {
@@ -236,6 +411,29 @@
       "slug": "mama-beak",
       "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
     },
+    "maokai": {
+      "name": "Maokai",
+      "cost": 5,
+      "traits": [
+        "Old",
+        "Growth",
+        "Juggernaut"
+      ],
+      "patch": "18.1",
+      "slug": "maokai",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "master-yi": {
+      "name": "Master Yi",
+      "cost": 3,
+      "traits": [
+        "Blossom",
+        "Adaptor"
+      ],
+      "patch": "18.1",
+      "slug": "master-yi",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
     "morgana": {
       "name": "Morgana",
       "cost": 4,
@@ -245,6 +443,17 @@
       ],
       "patch": "18.1",
       "slug": "morgana",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "murkwolf": {
+      "name": "Murkwolf",
+      "cost": 2,
+      "traits": [
+        "Riftbeast",
+        "Ravager"
+      ],
+      "patch": "18.1",
+      "slug": "murkwolf",
       "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
     },
     "nidalee": {
@@ -280,6 +489,18 @@
       "slug": "pebbles",
       "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
     },
+    "rakan": {
+      "name": "Rakan",
+      "cost": 1,
+      "traits": [
+        "Fae",
+        "Juggernaut",
+        "Vanguard"
+      ],
+      "patch": "18.1",
+      "slug": "rakan",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
     "rammus": {
       "name": "Rammus",
       "cost": 3,
@@ -300,6 +521,38 @@
       ],
       "patch": "18.1",
       "slug": "reksai",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "rengar": {
+      "name": "Rengar",
+      "cost": 3,
+      "traits": [
+        "Rival"
+      ],
+      "patch": "18.1",
+      "slug": "rengar",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "scuttlecrab": {
+      "name": "Scuttlecrab",
+      "cost": 2,
+      "traits": [
+        "Riftbeast",
+        "Juggernaut"
+      ],
+      "patch": "18.1",
+      "slug": "scuttlecrab",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "sejuani": {
+      "name": "Sejuani",
+      "cost": 2,
+      "traits": [
+        "Solar",
+        "Juggernaut"
+      ],
+      "patch": "18.1",
+      "slug": "sejuani",
       "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
     },
     "sentinel": {
@@ -382,6 +635,29 @@
       "slug": "teemo",
       "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
     },
+    "tristana": {
+      "name": "Tristana",
+      "cost": 3,
+      "traits": [
+        "Fae",
+        "Sprykin",
+        "Hunter"
+      ],
+      "patch": "18.1",
+      "slug": "tristana",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "varus": {
+      "name": "Varus",
+      "cost": 1,
+      "traits": [
+        "Inferno",
+        "Rapidfire"
+      ],
+      "patch": "18.1",
+      "slug": "varus",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
     "veigar": {
       "name": "Veigar",
       "cost": 1,
@@ -394,6 +670,40 @@
       "slug": "veigar",
       "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
     },
+    "vi": {
+      "name": "Vi",
+      "cost": 3,
+      "traits": [
+        "Primal",
+        "Juggernaut"
+      ],
+      "patch": "18.1",
+      "slug": "vi",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "warwick": {
+      "name": "Warwick",
+      "cost": 2,
+      "traits": [
+        "Blackthorn",
+        "Ravager"
+      ],
+      "patch": "18.1",
+      "slug": "warwick",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "xayah": {
+      "name": "Xayah",
+      "cost": 1,
+      "traits": [
+        "Elderwood",
+        "Fae",
+        "Rapidfire"
+      ],
+      "patch": "18.1",
+      "slug": "xayah",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
     "yorick": {
       "name": "Yorick",
       "cost": 1,
@@ -404,6 +714,17 @@
       ],
       "patch": "18.1",
       "slug": "yorick",
+      "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
+    },
+    "yunara": {
+      "name": "Yunara",
+      "cost": 2,
+      "traits": [
+        "Blossom",
+        "Executioner"
+      ],
+      "patch": "18.1",
+      "slug": "yunara",
       "source": "tft.ninja /units/<slug> (헤더의 '이름 코스트 특성' 파싱)"
     },
     "zyra": {

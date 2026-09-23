@@ -1389,9 +1389,16 @@ def _load_or_capture(
     if window:
         image = screen.capture_client(window)
         if image is None:
+            hints = screen.near_miss_titles(window)
+            suffix = (
+                "  비슷한 제목: " + ", ".join(f"'{name}'" for name in hints)
+                + " (부분 일치는 쓰지 않습니다 — 제목 전체를 지정하세요)"
+                if hints
+                else ""
+            )
             print(
                 f"[입력 오류] 창을 찾지 못했습니다: '{window}' "
-                "(정확한 제목은 물론 부분 일치도 되지만, 게임이 실행 중인지 확인하세요)"
+                f"(게임이 실행 중이고 최소화 상태가 아닌지 확인하세요){suffix}"
             )
             return None
         print(f"[캡처] 창 '{window}' 클라이언트 영역 {image.width}x{image.height}")

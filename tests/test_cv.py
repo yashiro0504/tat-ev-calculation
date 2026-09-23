@@ -255,6 +255,21 @@ class TestWindowTitleMatching(unittest.TestCase):
         self.assertEqual(screen._title_score("League of Legends", "TFT"), 0)
         self.assertEqual(screen._title_score("TFT", ""), 0)
 
+    def test_candidate_key_prefers_score_then_larger_window(self):
+        """부분 일치는 큰 창이 이긴다 — 작은 도우미 창(MetaTFT 등)을 잡지 않게.
+
+        Regression(2026-09-23): ``--window TFT`` 로 게임이 꺼진 상태에서 실행하니
+        최소화된 ``MetaTFT Companion App``(160x28)을 캡처해 '스캔 성공'처럼 보였다.
+        """
+        # 점수가 다르면 점수 우선(작아도 정확 일치가 이긴다)
+        self.assertGreater(
+            screen._candidate_key(2, 10), screen._candidate_key(1, 1_000_000)
+        )
+        # 점수가 같으면 큰 창 우선
+        self.assertGreater(
+            screen._candidate_key(1, 2_000_000), screen._candidate_key(1, 160 * 28)
+        )
+
 
 class TestRealCapture(unittest.TestCase):
     """이 PC 에서 실제 캡처가 되는지(스모크). 미지원 환경이면 건너뛴다."""
