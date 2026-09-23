@@ -185,7 +185,19 @@ def scan(
         cost = cost_table.get(champion)
         if cost is None:
             missing_cost.append(champion)
-            review.append({**item, "needs_review": True})
+            # 이유를 명시한다: 예전엔 reason 없이 review 에 넣어서 요약이
+            # "모호(Varus vs 심스두꺼비, 마진 0.259)" 로 출력됐다 — 실제 원인은
+            # '코스트 표에 없음' 인데 사용자는 마진/문턱 설정을 의심하게 된다.
+            review.append(
+                {
+                    **item,
+                    "needs_review": True,
+                    "reason": (
+                        f"코스트 표에 없음({champion}) — "
+                        "data/set18_unit_costs.json 에 추가하면 확정됩니다"
+                    ),
+                }
+            )
             continue
         # 성급: 사용자 지정 > 별 인식 > 기본값
         override = stars.get(champion.lower())

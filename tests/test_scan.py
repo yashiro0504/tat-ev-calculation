@@ -137,6 +137,10 @@ class TestScan(unittest.TestCase):
         report = scan.scan(canvas, templates, {"unit1": 4}, which=("shop",))
         self.assertEqual(report.snapshot["players"][0]["shop"], [])
         self.assertIn("unit2", report.missing_cost)
+        # 이유가 '모호' 로 잘못 나오면 사용자는 마진/문턱을 의심하게 된다(실측 회귀).
+        text = "\n".join(report.summary_lines())
+        self.assertIn("코스트 표에 없음", text)
+        self.assertNotIn("모호", text)
 
     def test_summary_lines_mention_star_source(self):
         canvas, templates = synthetic_screenshot({"shop_1": 1})

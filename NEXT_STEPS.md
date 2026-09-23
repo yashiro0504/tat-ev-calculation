@@ -62,6 +62,53 @@ python -m unittest discover -s tests -t .      # 가장 간단(273 tests, OK)
 * **기존 기본값은 이 UI와 많이 어긋난다**(상점 x 가 약 300px 왼쪽, 벤치 y 가 약 150px 아래).
   기본값을 갱신하려면 **다른 해상도(1920x1080 전체화면 등)에서 한 번 더 측정**해 비율이 해상도 무관한지 확인해야 한다(아직 미확인).
 
+### ✅ 실게임 검증 성공 (2026-09-23, 창모드 2120x1191)
+
+위 좌표 + **게임 화면 크롭 템플릿**으로 실게임에서 인식이 실제로 됐다.
+
+| 실험 | 결과 |
+|---|---|
+| 같은 라운드 재캡처(1초, 22초) | 상점 카드 픽셀차 **0.0** → 11/11칸 자기 인식 **0.99~1.000 확정** |
+| 라운드가 넘어가 상점 교체 | 이전에 크롭한 챔피언이 다시 나오면 **0.985~0.999 로 확정** (Varus 0.985, Yorick 0.986, 조약돌 0.999) |
+| 템플릿에 없는 챔피언 / 빈 칸 | 최고 0.72~0.75 로 바닥선 미만 → **`확인 필요`(오인 0)** |
+| 벤치 유닛이 바뀐 경우 | 자기 유사도 0.22~0.52 → **`확인 필요`(오인 0)** |
+
+CLI 실측 출력(제품 경로):
+```
+[좌표] 보정 파일 적용: data\layout_1920x1080.json
+인식 확정 1칸 / 확인 필요 13칸 (신뢰도 7%)
+  [확정] shop_1    Yorick   1코 1성 (유사도 98.7%)
+  [확인 필요] shop_3  코스트 표에 없음(Varus) — data/set18_unit_costs.json 에 추가하면 확정됩니다
+  [코스트 미확인] Varus, 조약돌 (data/set18_unit_costs.json 에 추가하세요)
+```
+
+**되는 워크플로 (상점 카드는 이름표가 있어 라벨링이 확실하다)**
+```powershell
+python scripts\check_capture.py --window TFT --out shot.bmp --shop     # 상점 보이는 상태 확인
+python scripts\crop_slots.py --in shot.bmp --area shop                 # data\crops\shop_N.bmp
+# 카드 이름표를 보고 파일명을 챔피언 이름으로 바꾼다 (shop_3.bmp -> Yorick.bmp)
+python scripts\build_templates.py --from-crops data\crops --out data\templates_ingame.json
+python -m tftcalc.cli scan --templates data\templates_ingame.json --window TFT --area shop,bench
+```
+* 챔피언 **하나당 한 번만** 크롭하면, 그 뒤로는 그 챔피언이 상점에 뜰 때마다 인식된다(실측 0.985~0.999).
+* 빈 칸 크롭은 **넣지 않는다**(가짜 템플릿이 된다). 분산이 낮은 칸(대략 300 미만)은 빈 칸이다.
+* `data\templates_ingame.json` 은 개인 라이브러리라 `.gitignore` 에 있다(쌓이면 실전 인식률이 올라간다).
+
+**남은 병목 (둘 다 데이터 문제, 인식 문제가 아니다)**
+1. **코스트 표가 부족하다.** `data/set18_unit_costs.json` 은 patch 18.1 + 메타 컴프 6개 유닛만(36개)이라
+   실게임 상점의 상당수가 코스트 미확인이다(실측: Varus·조약돌·바위 게·심술두꺼비 없음).
+   → `python scripts\fetch_unit_costs.py --units <슬러그,...>` 로 채우거나, 전체 로스터 파이프라인
+   (CommunityDragon, README §7)이 필요하다. 코스트가 없으면 그 유닛은 `확인 필요`로 빠질 뿐
+   **0이나 추정값을 넣지 않는다**(풀 계산 오염 방지).
+2. **벤치 유닛은 이름표가 없다.** 3D 모델이라 사람이 라벨링해야 한다. 같은 챔피언이 상점에 동시에
+   보이면 그 이름을 옮겨 붙이는 방법이 가장 싸다(상점 크롭 = 같은 챔피언의 2D 아트).
+
+### ⚠️ 네 번째 발견 — 진단 문구가 사용자를 엉뚱한 곳으로 보냈다
+코스트 표에 없는 유닛을 `reason` 없이 `review` 에 넣어서 요약이
+`모호(Varus vs 심술두꺼비, 마진 0.259)` 로 출력됐다. 실제 원인은 '코스트 표에 없음'인데
+사용자는 `REVIEW_MARGIN`/문턱을 의심하게 된다. → 이유를 명시하고 회귀 테스트를 추가했다
+(`tests/test_scan.py::TestScan::test_missing_cost_is_reported_not_guessed`).
+
 ### ⚠️ 세 번째 발견 — Data Dragon 정사각 아이콘은 게임 카드 아트와 안 맞는다
 좌표를 정확히 맞춘 뒤 실게임에서 측정한 결과:
 
@@ -95,28 +142,25 @@ python -m tftcalc.cli scan --templates data\templates_set18.json --window TFT --
 
 ---
 
-## 1. 남은 작업 A — 실게임 템플릿 만들기 (좌표는 끝났다)
+## 1. 남은 작업 A — 실게임 템플릿/코스트 데이터 채우기 (인식은 검증됐다)
 
-좌표는 §0.5 에서 실측해 `data\layout_1920x1080.json` 에 넣었다(상점/벤치 모두 눈으로 검증).
-남은 것은 **게임 카드 아트로 템플릿을 만드는 일**이다 — Data Dragon 아이콘은 실게임에서
-0.53~0.72 밖에 안 나와 바닥선(0.85)을 못 넘는다.
+좌표·인식 파이프라인은 끝났다(§0.5 검증 성공: 0.985~0.999 확정, 오인 0).
+남은 것은 **데이터를 채우는 일** 두 가지다.
 
-```powershell
-# 1) 상점이 보이는 "일반 인게임" 상태에서 (아이템/증강 선택 화면에서는 상점이 없다!)
-python scripts\check_capture.py --window TFT --out shot.bmp --shop   # shop_1 분산이 2000 이상인지 확인
-# 2) 칸을 1:1로 크롭해서 저장 (data\crops\shop_1.bmp ... bench_9.bmp)
-python scripts\crop_slots.py --in shot.bmp --area shop,bench --layout data\layout_1920x1080.json
-# 3) 파일 이름을 유닛 이름으로 바꾼다: shop_3.bmp -> Krug.bmp (카드 이름표를 보고 확정)
-# 4) 크롭 -> 템플릿
-python scripts\build_templates.py --from-crops data\crops --out data\templates_ingame.json
-# 5) 실게임 인식 확인 (한 라운드 안에서는 카드가 정적이므로 같은 챔피언이 다시 보이면 매칭된다)
-python -m tftcalc.cli scan --templates data\templates_ingame.json --window TFT --area shop,bench `
-    --layout data\layout_1920x1080.json
-```
+1. **크롭 템플릿 라이브러리 늘리기** — 상점 카드 이름표를 보고 크롭 파일명만 바꾸면 된다(§0.5 워크플로).
+   챔피언 하나당 한 번이면 그 뒤로는 계속 인식된다. 빈 칸 크롭은 넣지 말 것.
+2. **코스트 표 채우기** — `data/set18_unit_costs.json` 이 patch 18.1 + 메타 컴프 유닛(36개)만 담고 있어
+   실게임 상점의 상당수가 `코스트 표에 없음` 으로 빠진다.
+   ```powershell
+   python scripts\fetch_unit_costs.py --units xayah,varus,veigar,yorick   # tft.ninja 에서 조회
+   python scripts\fetch_unit_costs.py --from-comps data\comps_set18.json  # 기존 경로(컴프 유닛만)
+   ```
+   근본 해결은 **전체 로스터 자동 수집**(CommunityDragon, README §7)이다 — 세트 교체 대비까지 포함.
 
-실측 근거(2026-09-23): 한 라운드 안에서 상점 카드 크롭의 프레임 간 변화는 **0**(자기 유사도 1.000),
-벤치는 0.97~0.999(움직이는 유닛은 0.76~0.88)였다. 즉 **크롭 템플릿은 쓸 수 있다**.
-챔피언별로 한 번씩만 모으면 그 뒤로는 그 챔피언이 상점에 뜰 때마다 인식된다.
+**게이트(통과 기준)**
+1. 상점 5칸 중 템플릿이 있는 챔피언은 **유사도 0.95 이상으로 확정**(실측 0.985~0.999).
+2. 템플릿에 없는 챔피언·빈 칸은 **확정되지 않는다**(실측 0.72~0.75 → 확인 필요).
+3. 기존 273개 테스트 전부 통과.
 
 ```powershell
 # 1) TFT를 창모드(또는 전체화면 창모드)로 띄우고 상점이 보이는 상태에서
