@@ -275,13 +275,22 @@ python scripts\simulate_scan.py --units ahri,morgana,sett --out sim_shot.bmp  # 
 python scripts\fetch_item_recipes.py --slugs jeweled-gauntlet,blue-buff   # 조합식 확인/갱신
 ```
 > **주의: 실행기는 PC마다 다르다(가장 흔한 '왜 안 됨?').** `python` 이 Windows Store 스텁
-> (`WindowsApps\python.exe`)이면 위 명령들이 **아무 출력 없이 exit 9009** 로 끝난다 — 코드 버그가 아니다.
-> 진단: `Get-Command python` 이 `WindowsApps\python.exe` 를 가리키면 스텁이다.
-> **해결(문서를 고치지 않고 그대로 쓰기)**: PowerShell 세션에 한 줄만 넣으면 된다.
-> ```powershell
-> function python { py -3 @args }   # 이 세션에서만 유효
-> python -V                         # Python 3.x 가 나오면 성공
-> ```
+> (`WindowsApps\python.exe`, **0 바이트**인데 PATH 에서 먼저 잡힘)이면 위 명령들이
+> **아무 출력 없이 exit 9009** 로 끝난다 — 코드 버그가 아니다. 진짜 인터프리터는 따로 있다.
+> 진단: `Get-Command python -All` 을 쳐서 첫 항목이 `WindowsApps\python.exe` 면 스텁이다.
+>
+> **해결 3가지 (재설치 불필요)**
+> 1. **즉시**: 그냥 `py -3` 를 쓴다(`py -3 -V` 가 되면 Python 은 정상 설치돼 있다).
+> 2. **영구(모든 셸, 권장)**: 진짜 인터프리터 폴더를 PATH 앞으로 올리거나, 설정 →
+>    앱 → 고급 앱 설정 → **앱 실행 별칭** 에서 `python.exe`/`python3.exe` 를 끈다.
+>    PATH 순서 교정 한 줄(사용자 PATH, 되돌리기는 원본 백업 또는 재설정):
+>    ```powershell
+>    $bin = Join-Path $env:LOCALAPPDATA 'Python\bin'
+>    [Environment]::SetEnvironmentVariable('PATH', "$bin;" + [Environment]::GetEnvironmentVariable('PATH','User'), 'User')
+>    ```
+>    ※ 적용은 **새로 연 터미널**부터. 이미 떠 있는 세션은 `$env:PATH = "$env:LOCALAPPDATA\Python\bin;$env:PATH"` 한 줄로 즉시 반영.
+> 3. **PowerShell 세션 한정**: `function python { py -3 @args }`
+>
 > `py` 런처가 없는 PC라면 반대로 `python` 을 그대로 쓰면 된다(아래 예시는 `python` 기준이다).
 
 ### `lobby` 실행 예 (실제 출력)
