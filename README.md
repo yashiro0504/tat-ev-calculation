@@ -274,9 +274,15 @@ python scripts\build_templates.py --from-comps data/comps_set18.json   # 아이�
 python scripts\simulate_scan.py --units ahri,morgana,sett --out sim_shot.bmp  # 스캔 검증용 가짜 화면
 python scripts\fetch_item_recipes.py --slugs jeweled-gauntlet,blue-buff   # 조합식 확인/갱신
 ```
-> **주의: 실행기는 PC마다 다르다.** `python` 이 Windows Store 스텁(`WindowsApps\python.exe`)이라면
-> **`py -3`** 또는 `%LOCALAPPDATA%\Python\bin\python.exe` 를 쓰고, 반대로 `py` 런처가 없으면 `python` 을 쓴다.
-> (아래 예시는 `python` 기준이다.)
+> **주의: 실행기는 PC마다 다르다(가장 흔한 '왜 안 됨?').** `python` 이 Windows Store 스텁
+> (`WindowsApps\python.exe`)이면 위 명령들이 **아무 출력 없이 exit 9009** 로 끝난다 — 코드 버그가 아니다.
+> 진단: `Get-Command python` 이 `WindowsApps\python.exe` 를 가리키면 스텁이다.
+> **해결(문서를 고치지 않고 그대로 쓰기)**: PowerShell 세션에 한 줄만 넣으면 된다.
+> ```powershell
+> function python { py -3 @args }   # 이 세션에서만 유효
+> python -V                         # Python 3.x 가 나오면 성공
+> ```
+> `py` 런처가 없는 PC라면 반대로 `python` 을 그대로 쓰면 된다(아래 예시는 `python` 기준이다).
 
 ### `lobby` 실행 예 (실제 출력)
 ```

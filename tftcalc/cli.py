@@ -1382,7 +1382,17 @@ def _load_or_capture(
     통한다(16:9 창이면 해상도가 달라도 동일).
     """
     if source:
-        return screen.load_bmp(source)
+        try:
+            return screen.load_bmp(source)
+        except FileNotFoundError:
+            print(
+                f"[입력 오류] BMP 파일을 찾지 못했습니다: '{source}' "
+                "(경로를 확인하거나 --in 을 빼고 화면 캡처를 쓰세요)"
+            )
+            return None
+        except (ValueError, OSError) as exc:
+            print(f"[입력 오류] BMP 를 읽지 못했습니다: '{source}' ({exc})")
+            return None
     if not screen.is_supported():
         print("[오류] 자동 캡처는 Windows(GDI)에서만 됩니다. --in <BMP> 로 테스트하세요.")
         return None
@@ -1412,7 +1422,11 @@ def _load_digit_templates(args: argparse.Namespace) -> "fingerprint.TemplateSet 
     target = Path(path)
     if not target.exists():
         return None
-    return fingerprint.TemplateSet.load(target)
+    try:
+        return fingerprint.TemplateSet.load(target)
+    except (ValueError, OSError) as exc:
+        print(f"[알림] 숫자 지문 파일을 읽지 못해 숫자 인식을 건너뜁니다: {target} ({exc})")
+        return None
 
 
 def _run_scan(
@@ -1435,11 +1449,24 @@ def _run_scan(
             "python scripts/build_templates.py --from-comps data/comps_set18.json 로 생성하세요."
         )
         return None
-    template_set = fingerprint.TemplateSet.load(templates_path)
+    try:
+        template_set = fingerprint.TemplateSet.load(templates_path)
+    except FileNotFoundError:
+        print(
+            f"[입력 오류] 템플릿 파일을 찾지 못했습니다: '{templates_path}' "
+            "(python scripts/build_templates.py --from-comps data/comps_set18.json 로 생성하세요)"
+        )
+        return None
+    except (ValueError, OSError) as exc:
+        print(f"[입력 오류] 템플릿 파일을 읽지 못했습니다: '{templates_path}' ({exc})")
+        return None
     try:
         cost_table = scan_module.load_cost_table(getattr(args, "costs", None) or scan_module.DEFAULT_COSTS)
     except FileNotFoundError:
         print("[입력 오류] 유닛 코스트 표를 찾지 못했습니다(data/set18_unit_costs.json).")
+        return None
+    except (ValueError, OSError) as exc:
+        print(f"[입력 오류] 유닛 코스트 표를 읽지 못했습니다: {exc}")
         return None
     # 개인 캘리브레이션 좌표(data/layout_1920x1080.json)를 **실사용 경로에서도** 반영한다.
     # Regression(2026-09-23): scan/report 가 이 파일을 읽지 않아, 문서대로 보정해도

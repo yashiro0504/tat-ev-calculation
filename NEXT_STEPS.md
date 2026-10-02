@@ -33,8 +33,15 @@ python -m unittest discover -s tests -t .      # 가장 간단(280 tests, OK)
 ```
 기대 출력: `Ran 39/18/15/26/16/6/37/30/32/20/8/4/24/5 tests` + 각각 `OK` (= 280개).
 
-> **함정 1**: 실행기는 PC마다 다르다 — `python` 이 Microsoft Store 스텁이면 `py -3`,
-> `py` 런처가 없으면 `python`. 아래 예시는 **`python` 기준**이다.
+> **함정 1 (가장 흔한 '왜 안 됨?')**: 실행기는 PC마다 다르다. 이 저장소 문서는 **`python` 기준**인데,
+> 사무실 PC처럼 `python` 이 **Microsoft Store 스텁**(`WindowsApps\python.exe`)이면 문서의 명령이
+> **아무 출력 없이 exit 9009** 로 끝난다 — 코드 버그가 아니라 실행기 문제다.
+> 진단: `Get-Command python` 이 `WindowsApps\python.exe` 를 가리키면 스텁이다.
+> 해결(문서를 고치지 않고 그대로 쓰는 법): **PowerShell 세션에 한 줄**만 넣으면 된다.
+> ```powershell
+> function python { py -3 @args }   # 이 세션에서만 유효
+> python -V                         # Python 3.x 가 나오면 성공 (집 PC에 py 런처가 없으면 반대로 python 을 그대로 쓴다)
+> ```
 > **함정 2**: 한글 경로/출력 때문에 깨져 보이면 `cmd /c "set PYTHONIOENCODING=utf-8 && python ..."` 로 실행하세요.
 
 ---

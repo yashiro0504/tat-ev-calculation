@@ -403,22 +403,40 @@ def save_bmp(image: Image, path: str) -> None:
 
 
 def load_bmp(path: str) -> Image:
-    """BMP 파일을 읽는다(24/32비트 비압축). 테스트/오프라인 입력용."""
+    """BMP 파일을 읽는다(24/32비트 비압축). 테스트/오프라인 입력용.
+
+    예외 종류를 고정한다: 파일이 없으면 ``FileNotFoundError``, 내용이 BMP 가 아니거나
+    헤더/데이터가 잘렸으면 ``ValueError``. 호출자가 두 경우를 구분해 안내할 수 있게 하려는
+    것이며, ``build_templates.py`` 의 크롭 로딩처럼 ``ValueError`` 만 잡는 곳도 함께 보호된다.
+    """
     with open(path, "rb") as handle:
         data = handle.read()
-    if data[:2] != b"BM":
+    try:
+        head = data[:2]
+        pixel_offset = struct.unpack_from("<I", data, 10)[0]
+        width, height, planes, bits = struct.unpack_from("<iiHH", data, 18)
+        compression = struct.unpack_from("<I", data, 30)[0]
+    except struct.error as exc:  # 헤더조차 없는 파일
+        raise ValueError(f"BMP 헤더가 손상되었습니다({len(data)}바이트)") from exc
+    if head != b"BM":
         raise ValueError("BMP 파일이 아닙니다.")
-    pixel_offset = struct.unpack_from("<I", data, 10)[0]
-    width, height, planes, bits = struct.unpack_from("<iiHH", data, 18)
-    compression = struct.unpack_from("<I", data, 30)[0]
     if compression != 0:
         raise ValueError("비압축 BMP 만 지원합니다.")
     if bits not in (24, 32):
         raise ValueError(f"{bits}비트 BMP 는 지원하지 않습니다(24/32 만).")
-    top_down = height < 0
+    if width <= 0:
+        raise ValueError(f"BMP 폭이 잘못되었습니다: {width}")
+    top_down = height < 0  # 음수 높이 = top-down 저장(우리 save_bmp 가 쓰는 형식)
     height = abs(height)
+    if height == 0:
+        raise ValueError("BMP 높이가 0 입니다")
     bytes_per_pixel = bits // 8
     row_size = ((width * bits + 31) // 32) * 4
+    needed = pixel_offset + row_size * height
+    if len(data) < needed:  # 픽셀 데이터가 잘린 파일 -> IndexError 대신 ValueError
+        raise ValueError(
+            f"BMP 데이터가 잘렸습니다({len(data)}바이트 < 필요 {needed}바이트)"
+        )
     pixels = bytearray(width * height * 4)
     for row in range(height):
         source_row = row if top_down else (height - 1 - row)

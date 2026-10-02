@@ -75,6 +75,41 @@ class TestScreenImage(unittest.TestCase):
         self.assertEqual(flat.variance(), 0.0)
         self.assertGreater(make_pattern(4).variance(), 0.0)
 
+    def test_missing_bmp_raises_file_not_found(self):
+        """없는 파일은 ``FileNotFoundError`` — 호출자가 '경로 확인' 안내를 할 수 있어야 한다."""
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(FileNotFoundError):
+                screen.load_bmp(str(Path(tmp) / "nope.bmp"))
+
+    def test_text_file_is_rejected_as_value_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "note.bmp"
+            path.write_text("이건 BMP 가 아닙니다", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                screen.load_bmp(str(path))
+
+    def test_header_only_bmp_is_value_error(self):
+        """헤더조차 없는 2바이트 파일: struct.error 가 새어 나가면 안 된다."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "tiny.bmp"
+            path.write_bytes(b"BM")
+            with self.assertRaises(ValueError):
+                screen.load_bmp(str(path))
+
+    def test_truncated_bmp_is_value_error_not_index_error(self):
+        """픽셀이 잘린 BMP — 예전에는 픽셀 루프에서 IndexError 로 터졌다.
+
+        CLI 로는 스택 트레이스가 되므로, 내용 오류는 전부 ``ValueError`` 로 고정한다.
+        """
+        image = make_pattern(5, 16, 12)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "cut.bmp"
+            screen.save_bmp(image, str(path))
+            data = path.read_bytes()
+            path.write_bytes(data[: len(data) // 2])
+            with self.assertRaises(ValueError):
+                screen.load_bmp(str(path))
+
 
 class TestFingerprint(unittest.TestCase):
     def setUp(self):

@@ -156,6 +156,40 @@ class TestInputErrorsAreGuidance(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("[입력 오류]", out)
 
+    def test_scan_missing_bmp_is_guidance(self):
+        """``--in`` 에 없는 파일을 주면 스택 트레이스 대신 안내한다.
+
+        Regression: ``_load_or_capture`` 만 ``screen.load_bmp`` 예외를 잡지 않아
+        FileNotFoundError 트레이스백(exit 1)이 나왔다.
+        """
+        code, out = run(
+            "scan",
+            "--templates", str(ROOT / "data" / "templates_set18.json"),
+            "--in", str(ROOT / "data" / "no_such_shot.bmp"),
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("[입력 오류]", out)
+
+    def test_scan_missing_templates_is_guidance(self):
+        """템플릿 경로 오타도 트레이스백이 아니라 안내여야 한다."""
+        code, out = run(
+            "scan",
+            "--templates", str(ROOT / "data" / "no_such_templates.json"),
+            "--in", str(SNAPSHOT),
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("[입력 오류]", out)
+
+    def test_scan_non_bmp_input_is_guidance(self):
+        """BMP 가 아닌 파일(예: README.md)을 ``--in`` 으로 주는 실수."""
+        code, out = run(
+            "scan",
+            "--templates", str(ROOT / "data" / "templates_set18.json"),
+            "--in", str(ROOT / "README.md"),
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("[입력 오류]", out)
+
 
 class TestItemColumnHonesty(unittest.TestCase):
     """부품 입력이 없으면 0% 로 확률을 위장하지 않는다(M1).

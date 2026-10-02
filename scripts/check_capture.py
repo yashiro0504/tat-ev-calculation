@@ -57,7 +57,14 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.source:
-        image = screen.load_bmp(args.source)
+        try:
+            image = screen.load_bmp(args.source)
+        except FileNotFoundError:
+            print(f"[오류] BMP 파일을 찾지 못했습니다: '{args.source}'")
+            return 2
+        except (ValueError, OSError) as exc:
+            print(f"[오류] BMP 를 읽지 못했습니다: '{args.source}' ({exc})")
+            return 2
         print(f"[입력] {args.source}: {image.width}x{image.height} (BMP)")
     elif args.window:
         image = screen.capture_client(args.window)
@@ -88,7 +95,11 @@ def main(argv: list[str] | None = None) -> int:
         if not template_path.exists():
             print(f"[알림] 템플릿 파일이 없어 인식 시험을 건너뜁니다: {template_path}")
         else:
-            template_set = fingerprint.TemplateSet.load(template_path)
+            try:
+                template_set = fingerprint.TemplateSet.load(template_path)
+            except (ValueError, OSError) as exc:
+                print(f"[오류] 템플릿을 읽지 못했습니다: {template_path} ({exc})")
+                return 2
             overrides = layout.load_overrides(args.layout)
             print(
                 f"[템플릿] {template_path}: {len(template_set.templates)}개 "

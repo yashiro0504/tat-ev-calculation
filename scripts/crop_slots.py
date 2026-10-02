@@ -37,7 +37,14 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.source:
-        image = screen.load_bmp(args.source)
+        try:
+            image = screen.load_bmp(args.source)
+        except FileNotFoundError:
+            print(f"[오류] BMP 파일을 찾지 못했습니다: '{args.source}'")
+            return 2
+        except (ValueError, OSError) as exc:
+            print(f"[오류] BMP 를 읽지 못했습니다: '{args.source}' ({exc})")
+            return 2
         print(f"[입력] {args.source}: {image.width}x{image.height}")
     else:
         if not screen.is_supported():
